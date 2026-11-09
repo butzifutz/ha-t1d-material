@@ -1,0 +1,328 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "T1D-Material",
+        "description": "Glooko is optional.",
+        "data": {
+          "glooko_email": "Glooko e-mail (empty = no Glooko)",
+          "glooko_password": "Glooko password"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Glooko login failed",
+      "cannot_connect": "Cannot reach Glooko",
+      "glooko_unvollstaendig": "Enter e-mail and password or leave both empty"
+    },
+    "abort": {
+      "already_configured": "Already configured"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "T1D-Material",
+        "data": {
+          "set_tragezeit_d": "Infusion set: wear time",
+          "set_toleranz_h": "Infusion set: tolerance",
+          "set_packung": "Infusion set: pieces per package",
+          "cgm_tragezeit_d": "CGM sensor: wear time",
+          "cgm_toleranz_h": "CGM sensor: tolerance",
+          "cgm_packung": "CGM sensor: pieces per package",
+          "ampulle_tragezeit_d": "Insulin cartridge: wear time",
+          "ampulle_toleranz_h": "Insulin cartridge: tolerance",
+          "ampulle_packung": "Insulin cartridge: pieces per package",
+          "cgm_produkt": "CGM product (Dexcom)",
+          "glooko_intervall_min": "Glooko poll interval",
+          "merge_fenster_h": "Merge window app/Glooko",
+          "dedupe_min": "Collapse Glooko duplicates within",
+          "evidenz_h": "CGM evidence: hours before sensor end",
+          "glooko_email": "Glooko e-mail (empty = no Glooko)",
+          "glooko_password": "Glooko password"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Glooko login failed",
+      "cannot_connect": "Cannot reach Glooko",
+      "glooko_unvollstaendig": "Enter e-mail and password or leave both empty"
+    }
+  },
+  "entity": {
+    "sensor": {
+      "gesetzt_am": {
+        "name": "Inserted at"
+      },
+      "ablauf": {
+        "name": "Expires"
+      },
+      "toleranz_ende": {
+        "name": "Tolerance end"
+      },
+      "restzeit": {
+        "name": "Time left"
+      },
+      "restzeit_prozent": {
+        "name": "Time left (percent)"
+      },
+      "status": {
+        "name": "Status",
+        "state": {
+          "aktiv": "Active",
+          "toleranz": "In tolerance",
+          "ueberfaellig": "Overdue",
+          "kein_zyklus": "Nothing inserted"
+        }
+      },
+      "reichweite": {
+        "name": "Supply range"
+      },
+      "setzstelle": {
+        "name": "Insertion site"
+      },
+      "charge": {
+        "name": "Lot"
+      },
+      "quelle": {
+        "name": "Source"
+      },
+      "glooko_letzter_sync": {
+        "name": "Last Glooko sync"
+      }
+    },
+    "number": {
+      "bestand": {
+        "name": "Stock"
+      }
+    },
+    "button": {
+      "wechsel": {
+        "name": "Change now"
+      }
+    },
+    "binary_sensor": {
+      "glooko_verbindung": {
+        "name": "Glooko connection"
+      }
+    }
+  },
+  "services": {
+    "wechsel": {
+      "name": "Material changed",
+      "description": "New material inserted; ends the previous one.",
+      "fields": {
+        "typ": {
+          "name": "Material type",
+          "description": "Material type"
+        },
+        "zeit": {
+          "name": "Time (empty = now)",
+          "description": "Time (empty = now)"
+        },
+        "request_id": {
+          "name": "Request id (deduplication)",
+          "description": "Request id (deduplication)"
+        },
+        "setzstelle": {
+          "name": "Insertion site",
+          "description": "Insertion site"
+        },
+        "seite": {
+          "name": "Side",
+          "description": "Side"
+        },
+        "charge": {
+          "name": "Lot",
+          "description": "Lot"
+        },
+        "seriennummer": {
+          "name": "Serial number",
+          "description": "Serial number"
+        },
+        "produkt": {
+          "name": "Product",
+          "description": "Product"
+        },
+        "endgrund": {
+          "name": "End reason (previous)",
+          "description": "End reason (previous)"
+        },
+        "problemart": {
+          "name": "Problem type",
+          "description": "Problem type"
+        },
+        "problem_zeit": {
+          "name": "Time of problem",
+          "description": "Time of problem"
+        },
+        "problem_text": {
+          "name": "Problem description",
+          "description": "Problem description"
+        },
+        "ruecksendung": {
+          "name": "Sensor available for return",
+          "description": "Sensor available for return"
+        }
+      }
+    },
+    "beenden": {
+      "name": "Material removed (no replacement)",
+      "description": "Ends the running cycle.",
+      "fields": {
+        "typ": {
+          "name": "Material type",
+          "description": "Material type"
+        },
+        "zeit": {
+          "name": "Time (empty = now)",
+          "description": "Time (empty = now)"
+        },
+        "request_id": {
+          "name": "Request id (deduplication)",
+          "description": "Request id (deduplication)"
+        },
+        "endgrund": {
+          "name": "End reason (previous)",
+          "description": "End reason (previous)"
+        },
+        "problemart": {
+          "name": "Problem type",
+          "description": "Problem type"
+        },
+        "problem_zeit": {
+          "name": "Time of problem",
+          "description": "Time of problem"
+        },
+        "problem_text": {
+          "name": "Problem description",
+          "description": "Problem description"
+        },
+        "ruecksendung": {
+          "name": "Sensor available for return",
+          "description": "Sensor available for return"
+        }
+      }
+    },
+    "bearbeiten": {
+      "name": "Edit cycle",
+      "description": "Corrects times or details.",
+      "fields": {
+        "zyklus_id": {
+          "name": "Cycle id",
+          "description": "Cycle id"
+        },
+        "start": {
+          "name": "Start",
+          "description": "Start"
+        },
+        "ende": {
+          "name": "End",
+          "description": "End"
+        },
+        "setzstelle": {
+          "name": "Insertion site",
+          "description": "Insertion site"
+        },
+        "seite": {
+          "name": "Side",
+          "description": "Side"
+        },
+        "charge": {
+          "name": "Lot",
+          "description": "Lot"
+        },
+        "seriennummer": {
+          "name": "Serial number",
+          "description": "Serial number"
+        },
+        "produkt": {
+          "name": "Product",
+          "description": "Product"
+        },
+        "endgrund": {
+          "name": "End reason (previous)",
+          "description": "End reason (previous)"
+        },
+        "problemart": {
+          "name": "Problem type",
+          "description": "Problem type"
+        },
+        "problem_zeit": {
+          "name": "Time of problem",
+          "description": "Time of problem"
+        },
+        "problem_text": {
+          "name": "Problem description",
+          "description": "Problem description"
+        },
+        "ruecksendung": {
+          "name": "Sensor available for return",
+          "description": "Sensor available for return"
+        }
+      }
+    },
+    "loeschen": {
+      "name": "Delete cycle",
+      "description": "Deletes a wrong entry and restores stock.",
+      "fields": {
+        "zyklus_id": {
+          "name": "Cycle id",
+          "description": "Cycle id"
+        }
+      }
+    },
+    "bestand_setzen": {
+      "name": "Set stock",
+      "description": "Sets stock to a count.",
+      "fields": {
+        "typ": {
+          "name": "Material type",
+          "description": "Material type"
+        },
+        "anzahl": {
+          "name": "Count",
+          "description": "Count"
+        }
+      }
+    },
+    "packung_einbuchen": {
+      "name": "Add package",
+      "description": "Adds packages to stock.",
+      "fields": {
+        "typ": {
+          "name": "Material type",
+          "description": "Material type"
+        },
+        "packungen": {
+          "name": "Packages",
+          "description": "Packages"
+        }
+      }
+    },
+    "glooko_abrufen": {
+      "name": "Fetch Glooko now",
+      "description": "Syncs with Glooko now.",
+      "fields": {}
+    },
+    "daten": {
+      "name": "Get data",
+      "description": "Status, history and lists (for the app).",
+      "fields": {
+        "historie": {
+          "name": "History entries",
+          "description": "History entries"
+        }
+      }
+    }
+  },
+  "selector": {
+    "typ": {
+      "options": {
+        "set": "Infusion set",
+        "cgm": "CGM sensor",
+        "ampulle": "Insulin cartridge"
+      }
+    }
+  }
+}

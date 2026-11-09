@@ -1,0 +1,328 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "T1D-Material",
+        "description": "Glooko ist optional. Ohne Glooko werden Wechsel nur manuell erfasst.",
+        "data": {
+          "glooko_email": "Glooko-E-Mail (leer = ohne Glooko)",
+          "glooko_password": "Glooko-Passwort"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Glooko-Anmeldung fehlgeschlagen",
+      "cannot_connect": "Glooko nicht erreichbar",
+      "glooko_unvollstaendig": "E-Mail und Passwort angeben oder beide leer lassen"
+    },
+    "abort": {
+      "already_configured": "Bereits eingerichtet"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "T1D-Material",
+        "data": {
+          "set_tragezeit_d": "Infusionsset: Tragezeit",
+          "set_toleranz_h": "Infusionsset: Toleranz",
+          "set_packung": "Infusionsset: Stück pro Packung",
+          "cgm_tragezeit_d": "CGM-Sensor: Tragezeit",
+          "cgm_toleranz_h": "CGM-Sensor: Toleranz",
+          "cgm_packung": "CGM-Sensor: Stück pro Packung",
+          "ampulle_tragezeit_d": "Insulinampulle: Tragezeit",
+          "ampulle_toleranz_h": "Insulinampulle: Toleranz",
+          "ampulle_packung": "Insulinampulle: Stück pro Packung",
+          "cgm_produkt": "CGM-Produkt (Dexcom)",
+          "glooko_intervall_min": "Glooko-Abrufintervall",
+          "merge_fenster_h": "Fenster zum Zusammenführen App/Glooko",
+          "dedupe_min": "Glooko-Duplikate zusammenfassen innerhalb",
+          "evidenz_h": "CGM-Evidenz: Stunden vor Sensorende",
+          "glooko_email": "Glooko-E-Mail (leer = ohne Glooko)",
+          "glooko_password": "Glooko-Passwort"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Glooko-Anmeldung fehlgeschlagen",
+      "cannot_connect": "Glooko nicht erreichbar",
+      "glooko_unvollstaendig": "E-Mail und Passwort angeben oder beide leer lassen"
+    }
+  },
+  "entity": {
+    "sensor": {
+      "gesetzt_am": {
+        "name": "Gesetzt am"
+      },
+      "ablauf": {
+        "name": "Ablauf"
+      },
+      "toleranz_ende": {
+        "name": "Toleranz-Ende"
+      },
+      "restzeit": {
+        "name": "Restzeit"
+      },
+      "restzeit_prozent": {
+        "name": "Restzeit (Prozent)"
+      },
+      "status": {
+        "name": "Status",
+        "state": {
+          "aktiv": "Aktiv",
+          "toleranz": "In Toleranz",
+          "ueberfaellig": "Überfällig",
+          "kein_zyklus": "Kein Material gesetzt"
+        }
+      },
+      "reichweite": {
+        "name": "Reichweite"
+      },
+      "setzstelle": {
+        "name": "Setzstelle"
+      },
+      "charge": {
+        "name": "Charge"
+      },
+      "quelle": {
+        "name": "Quelle"
+      },
+      "glooko_letzter_sync": {
+        "name": "Letzter Glooko-Abruf"
+      }
+    },
+    "number": {
+      "bestand": {
+        "name": "Bestand"
+      }
+    },
+    "button": {
+      "wechsel": {
+        "name": "Wechsel jetzt"
+      }
+    },
+    "binary_sensor": {
+      "glooko_verbindung": {
+        "name": "Glooko-Verbindung"
+      }
+    }
+  },
+  "services": {
+    "wechsel": {
+      "name": "Material gewechselt",
+      "description": "Neues Material gesetzt; beendet das vorherige.",
+      "fields": {
+        "typ": {
+          "name": "Materialtyp",
+          "description": "Materialtyp"
+        },
+        "zeit": {
+          "name": "Zeitpunkt (leer = jetzt)",
+          "description": "Zeitpunkt (leer = jetzt)"
+        },
+        "request_id": {
+          "name": "Request-ID (Duplikatschutz)",
+          "description": "Request-ID (Duplikatschutz)"
+        },
+        "setzstelle": {
+          "name": "Setzstelle",
+          "description": "Setzstelle"
+        },
+        "seite": {
+          "name": "Seite",
+          "description": "Seite"
+        },
+        "charge": {
+          "name": "Charge",
+          "description": "Charge"
+        },
+        "seriennummer": {
+          "name": "Seriennummer",
+          "description": "Seriennummer"
+        },
+        "produkt": {
+          "name": "Produkt",
+          "description": "Produkt"
+        },
+        "endgrund": {
+          "name": "Endgrund (vorheriges Material)",
+          "description": "Endgrund (vorheriges Material)"
+        },
+        "problemart": {
+          "name": "Problemart",
+          "description": "Problemart"
+        },
+        "problem_zeit": {
+          "name": "Zeitpunkt des Problems",
+          "description": "Zeitpunkt des Problems"
+        },
+        "problem_text": {
+          "name": "Problembeschreibung",
+          "description": "Problembeschreibung"
+        },
+        "ruecksendung": {
+          "name": "Sensor für Rücksendung verfügbar",
+          "description": "Sensor für Rücksendung verfügbar"
+        }
+      }
+    },
+    "beenden": {
+      "name": "Material entfernt (ohne Ersatz)",
+      "description": "Beendet den laufenden Zyklus.",
+      "fields": {
+        "typ": {
+          "name": "Materialtyp",
+          "description": "Materialtyp"
+        },
+        "zeit": {
+          "name": "Zeitpunkt (leer = jetzt)",
+          "description": "Zeitpunkt (leer = jetzt)"
+        },
+        "request_id": {
+          "name": "Request-ID (Duplikatschutz)",
+          "description": "Request-ID (Duplikatschutz)"
+        },
+        "endgrund": {
+          "name": "Endgrund (vorheriges Material)",
+          "description": "Endgrund (vorheriges Material)"
+        },
+        "problemart": {
+          "name": "Problemart",
+          "description": "Problemart"
+        },
+        "problem_zeit": {
+          "name": "Zeitpunkt des Problems",
+          "description": "Zeitpunkt des Problems"
+        },
+        "problem_text": {
+          "name": "Problembeschreibung",
+          "description": "Problembeschreibung"
+        },
+        "ruecksendung": {
+          "name": "Sensor für Rücksendung verfügbar",
+          "description": "Sensor für Rücksendung verfügbar"
+        }
+      }
+    },
+    "bearbeiten": {
+      "name": "Zyklus bearbeiten",
+      "description": "Korrigiert Zeiten oder Angaben.",
+      "fields": {
+        "zyklus_id": {
+          "name": "Zyklus-ID",
+          "description": "Zyklus-ID"
+        },
+        "start": {
+          "name": "Start",
+          "description": "Start"
+        },
+        "ende": {
+          "name": "Ende",
+          "description": "Ende"
+        },
+        "setzstelle": {
+          "name": "Setzstelle",
+          "description": "Setzstelle"
+        },
+        "seite": {
+          "name": "Seite",
+          "description": "Seite"
+        },
+        "charge": {
+          "name": "Charge",
+          "description": "Charge"
+        },
+        "seriennummer": {
+          "name": "Seriennummer",
+          "description": "Seriennummer"
+        },
+        "produkt": {
+          "name": "Produkt",
+          "description": "Produkt"
+        },
+        "endgrund": {
+          "name": "Endgrund (vorheriges Material)",
+          "description": "Endgrund (vorheriges Material)"
+        },
+        "problemart": {
+          "name": "Problemart",
+          "description": "Problemart"
+        },
+        "problem_zeit": {
+          "name": "Zeitpunkt des Problems",
+          "description": "Zeitpunkt des Problems"
+        },
+        "problem_text": {
+          "name": "Problembeschreibung",
+          "description": "Problembeschreibung"
+        },
+        "ruecksendung": {
+          "name": "Sensor für Rücksendung verfügbar",
+          "description": "Sensor für Rücksendung verfügbar"
+        }
+      }
+    },
+    "loeschen": {
+      "name": "Zyklus löschen",
+      "description": "Löscht eine Fehleingabe und bucht den Bestand zurück.",
+      "fields": {
+        "zyklus_id": {
+          "name": "Zyklus-ID",
+          "description": "Zyklus-ID"
+        }
+      }
+    },
+    "bestand_setzen": {
+      "name": "Bestand setzen",
+      "description": "Setzt den Bestand auf eine Anzahl.",
+      "fields": {
+        "typ": {
+          "name": "Materialtyp",
+          "description": "Materialtyp"
+        },
+        "anzahl": {
+          "name": "Anzahl",
+          "description": "Anzahl"
+        }
+      }
+    },
+    "packung_einbuchen": {
+      "name": "Packung einbuchen",
+      "description": "Erhöht den Bestand um Packungen.",
+      "fields": {
+        "typ": {
+          "name": "Materialtyp",
+          "description": "Materialtyp"
+        },
+        "packungen": {
+          "name": "Packungen",
+          "description": "Packungen"
+        }
+      }
+    },
+    "glooko_abrufen": {
+      "name": "Glooko jetzt abrufen",
+      "description": "Gleicht sofort mit Glooko ab.",
+      "fields": {}
+    },
+    "daten": {
+      "name": "Daten abrufen",
+      "description": "Status, Historie und Listen (für die App).",
+      "fields": {
+        "historie": {
+          "name": "Anzahl Historien-Einträge",
+          "description": "Anzahl Historien-Einträge"
+        }
+      }
+    }
+  },
+  "selector": {
+    "typ": {
+      "options": {
+        "set": "Infusionsset",
+        "cgm": "CGM-Sensor",
+        "ampulle": "Insulinampulle"
+      }
+    }
+  }
+}

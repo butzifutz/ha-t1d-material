@@ -1,0 +1,250 @@
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
+
+import pytest
+
+from t1d_material.const import (
+    AMPULLE,
+    CGM,
+    LUECKE_1_BIS_3,
+    LUECKE_KEINE,
+    LUECKE_UEBER_3,
+    LUECKE_UNTER_1,
+    SET,
+    STATUS_AKTIV,
+    STATUS_KEIN,
+    STATUS_TOLERANZ,
+    STATUS_UEBERFAELLIG,
+)
+from t1d_material.model import (
+    Modell,
+    ModellFehler,
+    TypConfig,
+    dedupe_zeiten,
+    groesste_luecke_min,
+    leerer_zustand,
+    luecke_stufe,
+)
+
+TZ = ZoneInfo("Europe/Berlin")
+T0 = datetime(2026, 11, 1, 8, 0, tzinfo=TZ)
+H = timedelta(hours=1)
+M = timedelta(minutes=1)
+MERGE = 2 * H
+DEDUPE = 30 * M
+
+
+def neues_modell(einrichtung=T0 - 100 * H):
+    cfg = {
+        SET: TypConfig(72, 12, 10),
+        CGM: TypConfig(240, 12, 1),
+        AMPULLE: TypConfig(None, 0, 25),
+    }
+    return Modell(leerer_zustand(einrichtung), cfg)
+
+
+def test_status_ohne_zyklus():
+    m = neues_modell()
+    s = m.status(SET, T0)
+    assert s["status"] == STATUS_KEIN and s["restzeit_h"] is None
+
+
+def test_wechsel_status_verlauf_und_bestand():
+    m = neues_modell()
+    m.bestand_setzen(SET, 5, T0)
+    m.wechsel(SET, T0, T0)
+    assert m.z["bestand"][SET] == 4
+    assert m.status(SET, T0 + H)["status"] == STATUS_AKTIV
+    assert m.status(SET, T0 + H)["restzeit_h"] == 71
+    assert m.status(SET, T0 + 36 * H)["restzeit_prozent"] == 50
+    assert m.status(SET, T0 + 73 * H)["status"] == STATUS_TOLERANZ
+    s = m.status(SET, T0 + 90 * H)
+    assert s["status"] == STATUS_UEBERFAELLIG and s["restzeit_h"] == -18
+    assert s["restzeit_prozent"] == 0
+    # Reichweite: 4 Sets * 3 d + Rest (0, da überfällig)
+    assert s["reichweite_d"] == 12
+
+
+def test_neuer_start_beendet_alten_mit_endgrund():
+    m = neues_modell()
+    a = m.wechsel(CGM, T0, T0)
+    b = m.wechsel(CGM, T0 + 100 * H, T0 + 100 * H,
+                  ende={"problemart": "Sensor ausgefallen", "ruecksendung": False})
+    assert a["ende"] == b["start"]
+    assert a["endgrund"] == "vorzeitig" and a["problemart"] == "Sensor ausgefallen"
+    assert a["evidenz_status"] == "offen"
+    assert m.aktiv(CGM)["id"] == b["id"]
+
+
+def test_regulaeres_ende_ohne_problem():
+    m = neues_modell()
+    a = m.wechsel(SET, T0, T0)
+    m.wechsel(SET, T0 + 72 * H, T0 + 72 * H)
+    assert a["endgrund"] == "regulaer"
+
+
+def test_rueckdatieren_zwischen_zwei_zyklen():
+    m = neues_modell()
+    a = m.wechsel(SET, T0, T0)
+    c = m.wechsel(SET, T0 + 80 * H, T0 + 80 * H)
+    # vergessener Wechsel dazwischen
+    b = m.wechsel(SET, T0 + 40 * H, T0 + 81 * H)
+    assert a["ende"] == b["start"]
+    assert b["ende"] == c["start"]
+    assert m.aktiv(SET)["id"] == c["id"]
+
+
+def test_zukunft_abgelehnt():
+    m = neues_modell()
+    with pytest.raises(ModellFehler):
+        m.wechsel(SET, T0 + H, T0)
+
+
+def test_request_id_idempotent():
+    m = neues_modell()
+    m.bestand_setzen(SET, 3, T0)
+    a = m.wechsel(SET, T0, T0, request_id="r1")
+    b = m.wechsel(SET, T0, T0 + M, request_id="r1")
+    assert a["id"] == b["id"]
+    assert len(m.z["zyklen"]) == 1 and m.z["bestand"][SET] == 2
+
+
+def test_loeschen_oeffnet_vorgaenger_und_bucht_zurueck():
+    m = neues_modell()
+    m.bestand_setzen(SET, 3, T0)
+    a = m.wechsel(SET, T0, T0)
+    b = m.wechsel(SET, T0 + 10 * H, T0 + 10 * H, ende={"problemart": "Okklusion"})
+    assert m.z["bestand"][SET] == 1
+    m.loeschen(b["id"], T0 + 11 * H)
+    assert a["ende"] is None and "problemart" not in a and "endgrund" not in a
+    assert m.z["bestand"][SET] == 2
+    assert m.aktiv(SET)["id"] == a["id"]
+
+
+def test_loeschen_mittlerer_zyklus():
+    m = neues_modell()
+    a = m.wechsel(SET, T0, T0)
+    b = m.wechsel(SET, T0 + 10 * H, T0 + 10 * H)
+    c = m.wechsel(SET, T0 + 20 * H, T0 + 20 * H)
+    m.loeschen(b["id"], T0 + 21 * H)
+    assert a["ende"] == c["start"]
+
+
+def test_beenden_ohne_ersatz():
+    m = neues_modell()
+    a = m.wechsel(CGM, T0, T0)
+    m.beenden(CGM, T0 + 50 * H, T0 + 50 * H, ende={"problemart": "Sensor ist abgefallen"})
+    assert a["ende"] and m.aktiv(CGM) is None
+    assert m.status(CGM, T0 + 51 * H)["status"] == STATUS_KEIN
+    with pytest.raises(ModellFehler):
+        m.beenden(CGM, T0 + 52 * H, T0 + 52 * H)
+
+
+def test_bearbeiten_und_ueberlappung():
+    m = neues_modell()
+    a = m.wechsel(SET, T0, T0)
+    b = m.wechsel(SET, T0 + 10 * H, T0 + 10 * H)
+    m.bearbeiten(b["id"], {"setzstelle": "Bauch", "seite": "links"}, T0 + 11 * H)
+    assert b["setzstelle"] == "Bauch"
+    with pytest.raises(ModellFehler):
+        m.bearbeiten(b["id"], {"start": (T0 + 5 * H).isoformat()}, T0 + 11 * H)
+    with pytest.raises(ModellFehler):
+        m.bearbeiten(a["id"], {"foo": 1}, T0)
+
+
+def test_inventar():
+    m = neues_modell()
+    assert m.packung_einbuchen(SET, 2, T0) == 20
+    assert m.bestand_setzen(SET, 7, T0) == 7
+    with pytest.raises(ModellFehler):
+        m.bestand_setzen(SET, -1, T0)
+    assert [b["grund"] for b in m.z["buchungen"]] == ["packung", "korrektur"]
+
+
+def test_dedupe():
+    z = [T0, T0 + M, T0 + 40 * M, T0 + 10 * H]
+    assert dedupe_zeiten(z, DEDUPE) == [T0, T0 + 40 * M, T0 + 10 * H]
+
+
+def test_glooko_erster_abruf_nur_juengstes_ohne_buchung():
+    m = neues_modell(einrichtung=T0 + 200 * H)
+    m.bestand_setzen(SET, 5, T0)
+    ev = [T0, T0 + 80 * H, T0 + 160 * H, T0 + 160 * H + M]
+    neu = m.glooko_events(SET, ev, T0 + 200 * H, DEDUPE, MERGE)
+    assert len(neu) == 1 and neu[0]["start"] == (T0 + 160 * H).isoformat()
+    assert m.z["bestand"][SET] == 5  # vor Einrichtung → keine Buchung
+    # zweiter Abruf mit gleichen Daten: nichts Neues
+    assert m.glooko_events(SET, ev, T0 + 201 * H, DEDUPE, MERGE) == []
+    # neues Event nach Einrichtung → wird gebucht
+    neu = m.glooko_events(SET, ev + [T0 + 240 * H], T0 + 241 * H, DEDUPE, MERGE)
+    assert len(neu) == 1 and m.z["bestand"][SET] == 4
+
+
+def test_glooko_dann_app_wird_zusammengefuehrt():
+    m = neues_modell(einrichtung=T0 + M)  # erstes Event vor Einrichtung
+    m.bestand_setzen(SET, 5, T0)
+    m.glooko_events(SET, [T0], T0, DEDUPE, MERGE)
+    m.glooko_events(SET, [T0, T0 + 80 * H], T0 + 81 * H, DEDUPE, MERGE)
+    assert m.z["bestand"][SET] == 4
+    c = m.wechsel(SET, T0 + 81 * H, T0 + 81 * H, start={"setzstelle": "Bauch", "seite": "rechts"},
+                  ende={"problemart": "Okklusion"})
+    assert c["quelle"] == "zusammengefuehrt"
+    assert c["start"] == (T0 + 80 * H).isoformat()  # Zeit aus Glooko
+    assert c["setzstelle"] == "Bauch"
+    assert len(m.zyklen(SET)) == 2 and m.z["bestand"][SET] == 4  # nur einmal gebucht
+    vorher = m.zyklen(SET)[0]
+    assert vorher["problemart"] == "Okklusion" and vorher["endgrund"] == "vorzeitig"
+
+
+def test_app_dann_glooko_wird_zusammengefuehrt():
+    m = neues_modell(einrichtung=T0 + M)  # erstes Event vor Einrichtung
+    m.bestand_setzen(SET, 5, T0)
+    m.glooko_events(SET, [T0], T0, DEDUPE, MERGE)
+    a = m.zyklen(SET)[0]
+    b = m.wechsel(SET, T0 + 81 * H, T0 + 81 * H, start={"setzstelle": "Bauch"})
+    assert m.z["bestand"][SET] == 4
+    m.glooko_events(SET, [T0, T0 + 80 * H + 30 * M], T0 + 82 * H, DEDUPE, MERGE)
+    assert len(m.zyklen(SET)) == 2 and m.z["bestand"][SET] == 4
+    assert b["quelle"] == "zusammengefuehrt"
+    assert b["start"] == (T0 + 80 * H + 30 * M).isoformat()
+    assert a["ende"] == b["start"]
+
+
+def test_luecke():
+    mess = [T0 + i * 5 * M for i in range(1, 100)]  # Warm-up 5 min am Anfang
+    ende = mess[-1] + 5 * M
+    assert groesste_luecke_min(mess, T0, ende) == 0.0
+    mit_luecke = mess[:40] + mess[60:]  # 100 min Lücke
+    assert groesste_luecke_min(mit_luecke, T0, ende) == 105.0
+    # Sensor fällt aus, Ende 4 h nach letztem Wert
+    assert groesste_luecke_min(mess, T0, mess[-1] + 240 * M) == 240.0
+    assert groesste_luecke_min([], T0, ende) is None
+    assert luecke_stufe(None) == LUECKE_KEINE
+    assert luecke_stufe(0) == LUECKE_UNTER_1
+    assert luecke_stufe(59.9) == LUECKE_UNTER_1
+    assert luecke_stufe(60) == LUECKE_1_BIS_3
+    assert luecke_stufe(180) == LUECKE_1_BIS_3
+    assert luecke_stufe(181) == LUECKE_UEBER_3
+
+
+def test_sortierung_ueber_zeitzonen_offsets():
+    from datetime import timezone
+    m = neues_modell()
+    # 23:30 UTC liegt NACH 00:15+01:00 (= 23:15 UTC), als Text aber davor
+    a = m.wechsel(SET, datetime(2026, 11, 10, 0, 15, tzinfo=TZ), T0 + 400 * H)
+    b = m.wechsel(SET, datetime(2026, 11, 9, 23, 30, tzinfo=timezone.utc), T0 + 400 * H)
+    assert [c["id"] for c in m.zyklen(SET)] == [a["id"], b["id"]]
+    assert m.aktiv(SET)["id"] == b["id"] and a["ende"] == b["start"]
+
+
+def test_ampulle_ohne_tragezeit_reichweite_aus_median():
+    m = neues_modell()
+    m.packung_einbuchen(AMPULLE, 1, T0)
+    s = m.status(AMPULLE, T0)
+    assert s["status"] == STATUS_KEIN and s["reichweite_d"] is None
+    for i, h in enumerate([0, 50, 100, 300, 350]):  # Abstände 50, 50, 200(Ausreißer), 50
+        m.wechsel(AMPULLE, T0 + h * H, T0 + h * H)
+    s = m.status(AMPULLE, T0 + 360 * H)
+    assert s["status"] == STATUS_AKTIV and s["restzeit_h"] is None and s["ablauf"] is None
+    assert s["abstand_h"] == 50  # Median, nicht Mittelwert
+    assert s["bestand"] == 20 and s["reichweite_d"] == round(20 * 50 / 24, 1)

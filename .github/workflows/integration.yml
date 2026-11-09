@@ -1,0 +1,37 @@
+name: integration
+
+on:
+  push:
+    paths:
+      - "custom_components/**"
+      - "tests/**"
+      - "hacs.json"
+      - ".github/workflows/integration.yml"
+  workflow_dispatch:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install pytest==8.3.4
+      - run: python -m pytest -q tests
+
+  hassfest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: home-assistant/actions/hassfest@master
+
+  hacs:
+    # HACS validiert nur öffentliche Repos
+    if: ${{ !github.event.repository.private }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: hacs/action@main
+        with:
+          category: integration
+          ignore: brands

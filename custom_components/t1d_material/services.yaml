@@ -1,0 +1,135 @@
+wechsel:
+  fields:
+    typ:
+      required: true
+      selector: {"select": {"options": ["set", "cgm", "ampulle"], "translation_key": "typ"}}
+    zeit:
+      required: false
+      selector: {"datetime": {}}
+    request_id:
+      required: false
+      selector: {"text": {}}
+    setzstelle:
+      required: false
+      selector: {"text": {}}
+    seite:
+      required: false
+      selector: {"select": {"options": ["links", "rechts"]}}
+    charge:
+      required: false
+      selector: {"text": {}}
+    seriennummer:
+      required: false
+      selector: {"text": {}}
+    produkt:
+      required: false
+      selector: {"select": {"options": ["G6", "G7", "Flex"]}}
+    endgrund:
+      required: false
+      selector: {"select": {"options": ["regulaer", "vorzeitig"]}}
+    problemart:
+      required: false
+      selector: {"text": {}}
+    problem_zeit:
+      required: false
+      selector: {"datetime": {}}
+    problem_text:
+      required: false
+      selector: {"text": {}}
+    ruecksendung:
+      required: false
+      selector: {"boolean": {}}
+beenden:
+  fields:
+    typ:
+      required: true
+      selector: {"select": {"options": ["set", "cgm", "ampulle"], "translation_key": "typ"}}
+    zeit:
+      required: false
+      selector: {"datetime": {}}
+    request_id:
+      required: false
+      selector: {"text": {}}
+    endgrund:
+      required: false
+      selector: {"select": {"options": ["regulaer", "vorzeitig"]}}
+    problemart:
+      required: false
+      selector: {"text": {}}
+    problem_zeit:
+      required: false
+      selector: {"datetime": {}}
+    problem_text:
+      required: false
+      selector: {"text": {}}
+    ruecksendung:
+      required: false
+      selector: {"boolean": {}}
+bearbeiten:
+  fields:
+    zyklus_id:
+      required: true
+      selector: {"text": {}}
+    start:
+      required: false
+      selector: {"datetime": {}}
+    ende:
+      required: false
+      selector: {"datetime": {}}
+    setzstelle:
+      required: false
+      selector: {"text": {}}
+    seite:
+      required: false
+      selector: {"select": {"options": ["links", "rechts"]}}
+    charge:
+      required: false
+      selector: {"text": {}}
+    seriennummer:
+      required: false
+      selector: {"text": {}}
+    produkt:
+      required: false
+      selector: {"select": {"options": ["G6", "G7", "Flex"]}}
+    endgrund:
+      required: false
+      selector: {"select": {"options": ["regulaer", "vorzeitig"]}}
+    problemart:
+      required: false
+      selector: {"text": {}}
+    problem_zeit:
+      required: false
+      selector: {"datetime": {}}
+    problem_text:
+      required: false
+      selector: {"text": {}}
+    ruecksendung:
+      required: false
+      selector: {"boolean": {}}
+loeschen:
+  fields:
+    zyklus_id:
+      required: true
+      selector: {"text": {}}
+bestand_setzen:
+  fields:
+    typ:
+      required: true
+      selector: {"select": {"options": ["set", "cgm", "ampulle"], "translation_key": "typ"}}
+    anzahl:
+      required: true
+      selector: {"number": {"min": 0, "max": 999, "mode": "box"}}
+packung_einbuchen:
+  fields:
+    typ:
+      required: true
+      selector: {"select": {"options": ["set", "cgm", "ampulle"], "translation_key": "typ"}}
+    packungen:
+      required: false
+      selector: {"number": {"min": 1, "max": 50, "mode": "box"}}
+glooko_abrufen:
+daten:
+  fields:
+    historie:
+      required: false
+      selector: {"number": {"min": 0, "max": 10000, "mode": "box"}}

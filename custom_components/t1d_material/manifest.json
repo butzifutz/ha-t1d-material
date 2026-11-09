@@ -1,0 +1,14 @@
+{
+  "domain": "t1d_material",
+  "name": "T1D-Material",
+  "codeowners": ["@butzifutz"],
+  "config_flow": true,
+  "dependencies": ["http"],
+  "documentation": "https://github.com/butzifutz/ha-t1d-material",
+  "integration_type": "service",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/butzifutz/ha-t1d-material/issues",
+  "requirements": [],
+  "single_config_entry": true,
+  "version": "0.1.0"
+}
