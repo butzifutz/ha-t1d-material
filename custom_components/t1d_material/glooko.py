@@ -15,7 +15,7 @@ from __future__ import annotations
 import logging
 import re
 import time
-from datetime import datetime, tzinfo
+from datetime import datetime, timezone, tzinfo
 from urllib.parse import urlparse
 
 import aiohttp
@@ -152,3 +152,39 @@ def cgm_werte(serien: dict[str, list], tz: tzinfo) -> list[tuple[datetime, int]]
                 out.append((glooko_zeit(ts, tz), int(wert)))
     out.sort()
     return out
+
+
+INSULIN_SERIEN = ["scheduledBasal", "deliveredBolus"]
+
+
+def insulin_daten(
+    serien: dict[str, list], tz: tzinfo
+) -> tuple[list[tuple[datetime, datetime, float]], list[tuple[datetime, float]], datetime | None]:
+    """Basal-Segmente (Start, Ende, U/h), Boli (Zeit, U) und Datenstand (letzter Zeitpunkt).
+
+    `scheduledBasal` enthält jedes Segment mehrfach → nach (Start, Ende) entdoppeln.
+    Die Summe entspricht dann Glookos eigenem `scheduledBasalsSum`.
+    CamAPS-Auto-Mode-Basal steckt in `scheduledBasal`; Boli (inkl. Korrektur) in `deliveredBolus`.
+    """
+    basal: dict[tuple[str, str], tuple[datetime, datetime, float]] = {}
+    for p in serien.get("scheduledBasal", []):
+        ts, te, rate = p.get("timestamp"), p.get("endTimestamp"), p.get("rate")
+        if ts and te and rate is not None and (ts, te) not in basal:
+            basal[(ts, te)] = (glooko_zeit(ts, tz), glooko_zeit(te, tz), float(rate))
+    boli: list[tuple[datetime, float]] = []
+    for p in serien.get("deliveredBolus", []):
+        menge = p.get("insulinDelivered")
+        if menge is None:
+            menge = p.get("y")
+        if menge is None:
+            continue
+        if p.get("timestamp"):
+            t = glooko_zeit(p["timestamp"], tz)
+        elif p.get("x") is not None:  # Sekunden; wie "timestamp" Ortszeit als UTC kodiert
+            t = datetime.fromtimestamp(p["x"], timezone.utc).replace(tzinfo=tz)
+        else:
+            continue
+        boli.append((t, float(menge)))
+    segmente = sorted(basal.values())
+    zeiten = [e for _, e, _ in segmente] + [t for t, _ in boli]
+    return segmente, sorted(boli), (max(zeiten) if zeiten else None)

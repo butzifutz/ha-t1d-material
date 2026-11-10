@@ -26,20 +26,21 @@
         "data": {
           "set_tragezeit_d": "Infusionsset: Tragezeit",
           "set_toleranz_h": "Infusionsset: Toleranz",
-          "set_packung": "Infusionsset: Stück pro Packung",
+          "set_packung": "Infusionssets: Stück pro Packung",
           "cgm_tragezeit_d": "CGM-Sensor: Tragezeit",
           "cgm_toleranz_h": "CGM-Sensor: Toleranz",
-          "cgm_packung": "CGM-Sensor: Stück pro Packung",
-          "ampulle_tragezeit_d": "Insulinampulle: Tragezeit",
-          "ampulle_toleranz_h": "Insulinampulle: Toleranz",
-          "ampulle_packung": "Insulinampulle: Stück pro Packung",
+          "cgm_packung": "Sensoren: Stück pro Packung",
+          "ampulle_packung": "Pump Carts: Stück pro Packung",
           "cgm_produkt": "CGM-Produkt (Dexcom)",
           "glooko_intervall_min": "Glooko-Abrufintervall",
           "merge_fenster_h": "Fenster zum Zusammenführen App/Glooko",
           "dedupe_min": "Glooko-Duplikate zusammenfassen innerhalb",
           "evidenz_h": "CGM-Evidenz: Stunden vor Sensorende",
           "glooko_email": "Glooko-E-Mail (leer = ohne Glooko)",
-          "glooko_password": "Glooko-Passwort"
+          "glooko_password": "Glooko-Passwort",
+          "insulin_voll_u": "Insulin: Inhalt volle Ampulle",
+          "insulin_fuellen_u": "Insulin: Verlust beim Schlauchfüllen",
+          "insulin_warnung_u": "Insulin: Warnschwelle"
         }
       }
     },
@@ -89,6 +90,12 @@
       },
       "glooko_letzter_sync": {
         "name": "Letzter Glooko-Abruf"
+      },
+      "fuellstand": {
+        "name": "Füllstand"
+      },
+      "tagesverbrauch": {
+        "name": "Tagesverbrauch"
       }
     },
     "number": {
@@ -163,6 +170,10 @@
         "ruecksendung": {
           "name": "Sensor für Rücksendung verfügbar",
           "description": "Sensor für Rücksendung verfügbar"
+        },
+        "schlauch_gefuellt": {
+          "name": "Schlauch gefüllt",
+          "description": "Schlauch gefüllt"
         }
       }
     },
@@ -259,6 +270,10 @@
         "ruecksendung": {
           "name": "Sensor für Rücksendung verfügbar",
           "description": "Sensor für Rücksendung verfügbar"
+        },
+        "schlauch_gefuellt": {
+          "name": "Schlauch gefüllt",
+          "description": "Schlauch gefüllt"
         }
       }
     },
@@ -305,6 +320,56 @@
       "description": "Gleicht sofort mit Glooko ab.",
       "fields": {}
     },
+    "einstellungen_setzen": {
+      "name": "Einstellungen ändern",
+      "description": "Tragezeiten, Toleranzen, Packungen und Insulin-Werte setzen (wirkt sofort).",
+      "fields": {
+        "set_tragezeit_d": {
+          "name": "Infusionsset: Tragezeit",
+          "description": "Infusionsset: Tragezeit"
+        },
+        "set_toleranz_h": {
+          "name": "Infusionsset: Toleranz",
+          "description": "Infusionsset: Toleranz"
+        },
+        "cgm_tragezeit_d": {
+          "name": "CGM-Sensor: Tragezeit",
+          "description": "CGM-Sensor: Tragezeit"
+        },
+        "cgm_toleranz_h": {
+          "name": "CGM-Sensor: Toleranz",
+          "description": "CGM-Sensor: Toleranz"
+        },
+        "set_packung": {
+          "name": "Infusionssets: Stück pro Packung",
+          "description": "Infusionssets: Stück pro Packung"
+        },
+        "cgm_packung": {
+          "name": "Sensoren: Stück pro Packung",
+          "description": "Sensoren: Stück pro Packung"
+        },
+        "ampulle_packung": {
+          "name": "Pump Carts: Stück pro Packung",
+          "description": "Pump Carts: Stück pro Packung"
+        },
+        "cgm_produkt": {
+          "name": "CGM-Produkt (Dexcom)",
+          "description": "CGM-Produkt (Dexcom)"
+        },
+        "insulin_voll_u": {
+          "name": "Insulin: Inhalt volle Ampulle",
+          "description": "Insulin: Inhalt volle Ampulle"
+        },
+        "insulin_fuellen_u": {
+          "name": "Insulin: Verlust beim Schlauchfüllen",
+          "description": "Insulin: Verlust beim Schlauchfüllen"
+        },
+        "insulin_warnung_u": {
+          "name": "Insulin: Warnschwelle",
+          "description": "Insulin: Warnschwelle"
+        }
+      }
+    },
     "daten": {
       "name": "Daten abrufen",
       "description": "Status, Historie und Listen (für die App).",
@@ -321,7 +386,7 @@
       "options": {
         "set": "Infusionsset",
         "cgm": "CGM-Sensor",
-        "ampulle": "Insulinampulle"
+        "ampulle": "Insulin (Reservoir)"
       }
     }
   }

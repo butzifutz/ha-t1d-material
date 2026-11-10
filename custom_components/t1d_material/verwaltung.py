@@ -21,6 +21,9 @@ from .const import (
     CONF_DEDUPE_MIN,
     CONF_EMAIL,
     CONF_EVIDENZ_H,
+    CONF_INSULIN_FUELLEN_U,
+    CONF_INSULIN_VOLL_U,
+    CONF_INSULIN_WARNUNG_U,
     CONF_MERGE_H,
     CONF_PACKUNG,
     CONF_PASSWORD,
@@ -30,19 +33,40 @@ from .const import (
     DATA_DIR,
     DEFAULTS_GLOBAL,
     DEFAULTS_TYP,
+    AMPULLE,
     GLOOKO_SERIE,
     MIT_TRAGEZEIT,
     STORAGE_KEY,
     STORAGE_VERSION,
     TYPEN,
 )
-from .glooko import CGM_SERIEN, GlookoClient, GlookoFehler, cgm_werte, glooko_zeit
-from .model import Modell, TypConfig, groesste_luecke_min, iso, leerer_zustand, luecke_stufe, parse
+from .glooko import (
+    CGM_SERIEN,
+    INSULIN_SERIEN,
+    GlookoClient,
+    GlookoFehler,
+    cgm_werte,
+    glooko_zeit,
+    insulin_daten,
+)
+from .model import (
+    InsulinConfig,
+    Modell,
+    TypConfig,
+    groesste_luecke_min,
+    insulin_summe,
+    iso,
+    leerer_zustand,
+    luecke_stufe,
+    migrieren,
+    parse,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
 GLOOKO_FENSTER = timedelta(days=14)
 EVIDENZ_AUFGEBEN = timedelta(hours=48)  # danach Evidenz mit dem abschließen, was da ist
+VERBRAUCH_TAGE = 7  # Ø-Tagesverbrauch Insulin über so viele Tage
 
 
 def typ_key(typ: str, key: str) -> str:
@@ -85,6 +109,20 @@ class Verwaltung:
             for t in TYPEN
         }
 
+    def insulin_config(self) -> InsulinConfig:
+        return InsulinConfig(
+            voll_u=float(self.cfg[CONF_INSULIN_VOLL_U]),
+            fuellen_u=float(self.cfg[CONF_INSULIN_FUELLEN_U]),
+            warnung_u=float(self.cfg[CONF_INSULIN_WARNUNG_U]),
+        )
+
+    def config_uebernehmen(self) -> None:
+        """Geänderte Optionen ohne Neuladen anwenden (Tragezeiten, Packungen, Insulin)."""
+        self.cfg = wirksame_config(self.entry)
+        self.modell.config = self.typ_config()
+        self.modell.insulin = self.insulin_config()
+        self.benachrichtigen()
+
     @property
     def produkt(self) -> str:
         return self.cfg.get(typ_key(CGM, CONF_PRODUKT), "G7")
@@ -97,7 +135,10 @@ class Verwaltung:
         daten = await self._store.async_load()
         if daten is None:
             daten = leerer_zustand(dt_util.now())
-        self.modell = Modell(daten, self.typ_config())
+        migriert = migrieren(daten)
+        self.modell = Modell(daten, self.typ_config(), self.insulin_config())
+        if migriert:
+            await self._speichern()
         await self.hass.async_add_executor_job(self._verzeichnisse_anlegen)
 
     def _verzeichnisse_anlegen(self) -> None:
@@ -154,6 +195,7 @@ class Verwaltung:
                 g["letzter_sync"] = iso(jetzt)
                 g["fehler"] = None
                 await self._speichern()
+            await self._insulin_abgleich(jetzt, tz)
             await self._evidenz_sammeln(jetzt, tz)
         except GlookoFehler as e:
             _LOGGER.warning("Glooko-Abgleich fehlgeschlagen: %s", e)
@@ -161,6 +203,28 @@ class Verwaltung:
                 g["fehler"] = str(e)
                 await self._speichern()
         self.benachrichtigen()
+
+    async def _insulin_abgleich(self, jetzt: datetime, tz) -> None:
+        """Verbrauch seit dem letzten Reservoirwechsel + Ø-Tagesverbrauch aus Basal und Bolus."""
+        c = self.modell.aktiv(AMPULLE)
+        von = jetzt - timedelta(days=VERBRAUCH_TAGE + 1)
+        if c is not None:
+            von = min(von, parse(c["start"]))
+        serien = await self._glooko.serien(von, jetzt + timedelta(days=1), INSULIN_SERIEN)
+        basal, boli, stand = insulin_daten(serien, tz)
+        if stand is None:
+            return
+        stand = min(stand, jetzt)
+        tage = insulin_summe(basal, boli, stand - timedelta(days=VERBRAUCH_TAGE), stand) / VERBRAUCH_TAGE
+        info: dict[str, Any] = {"stand": iso(stand), "tagesverbrauch_u": round(tage, 2) if tage > 0 else None}
+        if c is not None:
+            info["zyklus_id"] = c["id"]
+            info["verbrauch_u"] = round(insulin_summe(basal, boli, parse(c["start"]), stand), 2)
+
+        def setzen(m: Modell):
+            m.z["insulin"] = info
+
+        await self.aendern(setzen)
 
     async def _evidenz_sammeln(self, jetzt: datetime, tz) -> None:
         for c in self.modell.offene_evidenz():

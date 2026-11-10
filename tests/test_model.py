@@ -248,3 +248,95 @@ def test_ampulle_ohne_tragezeit_reichweite_aus_median():
     assert s["status"] == STATUS_AKTIV and s["restzeit_h"] is None and s["ablauf"] is None
     assert s["abstand_h"] == 50  # Median, nicht Mittelwert
     assert s["bestand"] == 20 and s["reichweite_d"] == round(20 * 50 / 24, 1)
+
+
+# ------------------------------------------------------------- v0.2: Reichweite, Insulin, Migration
+from t1d_material.const import SETZSTELLEN_CGM, SETZSTELLE_DEXCOM  # noqa: E402
+from t1d_material.model import InsulinConfig, insulin_summe, migrieren  # noqa: E402
+
+
+def _zyklen(m, typ, dauern_h, start=T0):
+    t = start
+    for d in dauern_h:
+        m.wechsel(typ, t, t)
+        t += d * H
+    return t
+
+
+def test_reichweite_set_nutzt_median_ab_drei_wechseln():
+    m = neues_modell()
+    m.bestand_setzen(SET, 10, T0)
+    jetzt = _zyklen(m, SET, [48, 48, 48, 48])  # 4 abgeschlossene à 48 h, 5. läuft nicht
+    m.wechsel(SET, jetzt, jetzt)
+    s = m.status(SET, jetzt)
+    assert s["reichweite_basis"] == "median" and s["abstand_h"] == 48
+    # Bestand 5 × 48 h + Rest des laufenden bis zum typischen Wechsel (48 h)
+    assert s["reichweite_d"] == round((5 * 48 + 48) / 24, 1)
+
+
+def test_reichweite_set_soll_bei_wenig_historie():
+    m = neues_modell()
+    m.bestand_setzen(SET, 3, T0)
+    m.wechsel(SET, T0, T0)
+    s = m.status(SET, T0 + 12 * H)
+    assert s["reichweite_basis"] == "soll"
+    assert s["reichweite_d"] == round((2 * 72 + 60) / 24, 1)
+
+
+def test_insulin_summe_anteilig():
+    basal = [(T0, T0 + 2 * H, 1.0), (T0 + 2 * H, T0 + 4 * H, 2.0)]
+    boli = [(T0 + 30 * M, 3.0), (T0 + 5 * H, 9.0)]
+    assert insulin_summe(basal, boli, T0 + H, T0 + 3 * H) == pytest.approx(1.0 + 2.0)
+    assert insulin_summe(basal, boli, T0, T0 + 4 * H) == pytest.approx(2 + 4 + 3)
+
+
+def test_insulin_fuellstand_aus_glooko():
+    m = neues_modell()
+    m.insulin = InsulinConfig(160, 12, 20)
+    m.bestand_setzen(AMPULLE, 5, T0)
+    c = m.wechsel(AMPULLE, T0, T0, start={"schlauch_gefuellt": True})
+    stand = T0 + 24 * H
+    m.z["insulin"] = {"zyklus_id": c["id"], "verbrauch_u": 40.0, "stand": stand.isoformat(),
+                      "tagesverbrauch_u": 48.0}
+    s = m.status(AMPULLE, stand)
+    assert s["fuellstand_u"] == 160 - 12 - 40
+    assert s["status"] == STATUS_AKTIV
+    assert s["reichweite_d"] == round((108 + 4 * 148) / 48, 1)  # Bestand nach Wechsel: 4
+    # 1,5 h nach Datenstand: hochgerechnet mit 2 U/h
+    s2 = m.status(AMPULLE, stand + 90 * M)
+    assert s2["fuellstand_u"] == 105.0
+    # ohne Schlauchfüllen 12 U mehr
+    c["schlauch_gefuellt"] = False
+    assert m.status(AMPULLE, stand)["fuellstand_u"] == 120
+
+
+def test_insulin_warnung_und_leer():
+    m = neues_modell()
+    c = m.wechsel(AMPULLE, T0, T0)
+    m.z["insulin"] = {"zyklus_id": c["id"], "verbrauch_u": 135.0, "stand": (T0 + 70 * H).isoformat(),
+                      "tagesverbrauch_u": 48.0}
+    assert m.status(AMPULLE, T0 + 70 * H)["status"] == STATUS_TOLERANZ  # 13 U ≤ 20 U
+    m.z["insulin"]["verbrauch_u"] = 150.0
+    assert m.status(AMPULLE, T0 + 70 * H)["status"] == STATUS_UEBERFAELLIG
+
+
+def test_insulin_neuer_wechsel_vor_glooko_daten_gilt_als_voll():
+    m = neues_modell()
+    alt = m.wechsel(AMPULLE, T0, T0)
+    m.z["insulin"] = {"zyklus_id": alt["id"], "verbrauch_u": 100.0, "stand": (T0 + 60 * H).isoformat(),
+                      "tagesverbrauch_u": 48.0}
+    m.wechsel(AMPULLE, T0 + 61 * H, T0 + 61 * H)
+    assert m.status(AMPULLE, T0 + 61 * H)["fuellstand_u"] == 148
+
+
+def test_setzstelle_ohne_altersangabe_und_migration():
+    assert "Oberes Gesäß" in SETZSTELLEN_CGM
+    assert not any("Alter" in s for s in SETZSTELLEN_CGM)
+    assert SETZSTELLE_DEXCOM["Oberes Gesäß"] == "Oberes Gesäß (Alter 2–6)"
+    z = leerer_zustand(T0)
+    z.pop("insulin")
+    z["zyklen"].append({"id": "x", "typ": CGM, "start": T0.isoformat(), "ende": None,
+                        "setzstelle": "Oberes Gesäß (Alter 2–6)"})
+    assert migrieren(z) is True
+    assert z["zyklen"][0]["setzstelle"] == "Oberes Gesäß" and z["insulin"] == {}
+    assert migrieren(z) is False

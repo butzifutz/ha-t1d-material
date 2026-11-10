@@ -1,4 +1,4 @@
-"""T1D-Material: Infusionssets, CGM-Sensoren und Insulinampullen verwalten."""
+"""T1D-Material: Infusionssets, CGM-Sensoren und Insulin (Pump Carts) verwalten."""
 
 from __future__ import annotations
 
@@ -10,10 +10,13 @@ from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.event import async_track_time_interval
 
-from .const import CONF_INTERVALL_MIN, DOMAIN
+from .const import CONF_EMAIL, CONF_INTERVALL_MIN, CONF_PASSWORD, DOMAIN
 from .http import registrieren as http_registrieren
 from .services import registrieren as services_registrieren
-from .verwaltung import Verwaltung
+from .verwaltung import Verwaltung, wirksame_config
+
+# Nur diese Optionen erfordern ein Neuladen (Glooko-Client, Abruf-Timer); alles andere wirkt live
+NEULADEN_BEI = (CONF_EMAIL, CONF_PASSWORD, CONF_INTERVALL_MIN)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -55,7 +58,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: T1DConfigEntry) -> bool:
 
 
 async def _neu_laden(hass: HomeAssistant, entry: T1DConfigEntry) -> None:
-    await hass.config_entries.async_reload(entry.entry_id)
+    v = entry.runtime_data
+    neu = wirksame_config(entry)
+    if any(neu.get(k) != v.cfg.get(k) for k in NEULADEN_BEI):
+        await hass.config_entries.async_reload(entry.entry_id)
+    else:
+        v.config_uebernehmen()
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: T1DConfigEntry) -> bool:

@@ -14,13 +14,13 @@ from homeassistant.components.http import HomeAssistantView
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 
-from .const import CGM, TYP_NAMEN
+from .const import CGM, SETZSTELLE_DEXCOM, TYP_NAMEN
 from .model import ModellFehler, parse
 
 MAX_FOTO = 15 * 1024 * 1024
 
 EXPORT_SPALTEN = [
-    "id", "typ", "start", "ende", "quelle", "setzstelle", "seite", "produkt", "charge",
+    "id", "typ", "start", "ende", "quelle", "setzstelle", "seite", "produkt", "charge", "schlauch_gefuellt",
     "seriennummer", "endgrund", "problemart", "problem_zeit", "problem_text", "ruecksendung",
     "groesste_luecke_min", "luecke_stufe", "evidenz_status", "foto",
 ]
@@ -135,7 +135,7 @@ def reklamation_text(c: dict) -> str:
         f"Produkt:                   {c.get('produkt') or '–'}",
         f"Seriennummer:              {c.get('seriennummer') or '– (siehe Foto)'}",
         f"Charge:                    {c.get('charge') or '–'}",
-        f"Setzstelle:                {c.get('setzstelle') or '–'}"
+        f"Setzstelle:                {SETZSTELLE_DEXCOM.get(c.get('setzstelle'), c.get('setzstelle')) or '–'}"
         + (f" ({c['seite']})" if c.get("seite") else ""),
         f"Sensor für Rücksendung:    {j(c.get('ruecksendung'))}",
         f"Längste Zeit ohne Werte:   {c.get('luecke_stufe') or 'Keine Angabe'}"

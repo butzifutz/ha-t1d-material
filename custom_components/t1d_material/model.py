@@ -9,7 +9,8 @@ Der Zustand ist ein JSON-fähiges dict, damit er direkt im HA-Store liegt:
       "bestand": {typ: int},
       "buchungen": [ {zeit, typ, delta, grund, zyklus_id}, ... ],
       "request_ids": {request_id: zyklus_id | None},
-      "glooko": {"letzter_sync": iso|None, "fehler": str|None, "initialisiert": {typ: bool}}
+      "glooko": {"letzter_sync": iso|None, "fehler": str|None, "initialisiert": {typ: bool}},
+      "insulin": {"zyklus_id", "verbrauch_u", "stand": iso, "tagesverbrauch_u"}   # aus Glooko
     }
 """
 
@@ -21,6 +22,7 @@ from datetime import datetime, timedelta
 from typing import Any, Iterable
 
 from .const import (
+    AMPULLE,
     CGM,
     ENDGRUND_REGULAER,
     ENDGRUND_VORZEITIG,
@@ -31,6 +33,7 @@ from .const import (
     QUELLE_APP,
     QUELLE_GLOOKO,
     QUELLE_ZUSAMMEN,
+    SETZSTELLE_ALT,
     STATUS_AKTIV,
     STATUS_KEIN,
     STATUS_TOLERANZ,
@@ -41,7 +44,7 @@ from .const import (
 MAX_REQUEST_IDS = 1000
 
 # Felder, die beim Setzen eines Materials erfasst werden
-START_FELDER = ("setzstelle", "seite", "charge", "seriennummer", "produkt", "foto")
+START_FELDER = ("setzstelle", "seite", "charge", "seriennummer", "produkt", "foto", "schlauch_gefuellt")
 # Felder, die das Ende eines Zyklus beschreiben (Reklamation)
 ENDE_FELDER = (
     "endgrund",
@@ -62,6 +65,18 @@ class TypConfig:
     tragezeit_h: float | None  # None = kein Ablauf (Ampulle)
     toleranz_h: float
     packung: int
+
+
+@dataclass
+class InsulinConfig:
+    voll_u: float = 160.0      # Inhalt einer vollen Ampulle
+    fuellen_u: float = 12.0    # Verlust beim Schlauchfüllen
+    warnung_u: float = 20.0    # ab hier "bald wechseln" (CamAPS-Warnung)
+
+    @property
+    def nutzbar_u(self) -> float:
+        """Was eine neue Ampulle (mit Schlauchfüllen) tatsächlich liefert."""
+        return max(self.voll_u - self.fuellen_u, 0.0)
 
 
 def iso(dt: datetime | None) -> str | None:
@@ -86,13 +101,32 @@ def leerer_zustand(jetzt: datetime) -> dict[str, Any]:
         "buchungen": [],
         "request_ids": {},
         "glooko": {"letzter_sync": None, "fehler": None, "initialisiert": {}},
+        "insulin": {},
     }
 
 
+def migrieren(z: dict[str, Any]) -> bool:
+    """Ältere Zustände anheben. Gibt True zurück, wenn etwas geändert wurde."""
+    geaendert = False
+    if "insulin" not in z:
+        z["insulin"] = {}
+        geaendert = True
+    for c in z["zyklen"]:
+        alt = c.get("setzstelle")
+        if alt in SETZSTELLE_ALT:
+            c["setzstelle"] = SETZSTELLE_ALT[alt]
+            geaendert = True
+    return geaendert
+
+
 class Modell:
-    def __init__(self, zustand: dict[str, Any], config: dict[str, TypConfig]):
+    def __init__(
+        self, zustand: dict[str, Any], config: dict[str, TypConfig], insulin: InsulinConfig | None = None
+    ):
         self.z = zustand
         self.config = config
+        self.insulin = insulin or InsulinConfig()
+        migrieren(self.z)
 
     # ------------------------------------------------------------------ lesen
     def zyklen(self, typ: str) -> list[dict]:
@@ -128,21 +162,19 @@ class Modell:
             "restzeit_prozent": None,
         }
         if cfg.tragezeit_h is None:
-            # Bestandstyp: Reichweite aus dem typischen Wechselabstand
-            abstand_h = self.typischer_abstand_h(typ)
-            return basis | leer | {
-                "status": STATUS_AKTIV if c else STATUS_KEIN,
-                "zyklus": c,
-                "gesetzt_am": c["start"] if c else None,
-                "abstand_h": abstand_h,
-                "reichweite_d": round(vorrat * abstand_h / 24, 1) if abstand_h else None,
-            }
+            return basis | leer | self._insulin_status(c, vorrat, jetzt)
+        # Reichweite: tatsächlicher typischer Wechselabstand (ab 3 Wechseln), sonst Soll-Tragezeit
+        median_h = self.typischer_abstand_h(typ)
+        abstand_h = min(median_h, cfg.tragezeit_h + cfg.toleranz_h) if median_h else cfg.tragezeit_h
+        reichweite_basis = "median" if median_h else "soll"
         if c is None:
             return basis | leer | {
                 "status": STATUS_KEIN,
                 "zyklus": None,
                 "gesetzt_am": None,
-                "reichweite_d": round(vorrat * cfg.tragezeit_h / 24, 1),
+                "abstand_h": abstand_h,
+                "reichweite_basis": reichweite_basis,
+                "reichweite_d": round(vorrat * abstand_h / 24, 1),
             }
         start = parse(c["start"])
         ablauf = start + timedelta(hours=cfg.tragezeit_h)
@@ -155,7 +187,9 @@ class Modell:
         else:
             st = STATUS_UEBERFAELLIG
         prozent = max(0.0, min(100.0, rest_h / cfg.tragezeit_h * 100)) if cfg.tragezeit_h else 0.0
-        reichweite_h = vorrat * cfg.tragezeit_h + max(rest_h, 0)
+        # Aktuelles Material: Rest bis zum typischen Wechsel (nicht bis zum Soll-Ablauf)
+        rest_typisch_h = (start + timedelta(hours=abstand_h) - jetzt).total_seconds() / 3600
+        reichweite_h = vorrat * abstand_h + max(rest_typisch_h, 0)
         return basis | {
             "status": st,
             "zyklus": c,
@@ -164,8 +198,63 @@ class Modell:
             "toleranz_ende": iso(tol_ende),
             "restzeit_h": round(rest_h, 2),
             "restzeit_prozent": round(prozent, 1),
+            "abstand_h": abstand_h,
+            "reichweite_basis": reichweite_basis,
             "reichweite_d": round(reichweite_h / 24, 1),
         }
+
+    def _insulin_status(self, c: dict | None, vorrat: int, jetzt: datetime) -> dict[str, Any]:
+        """Insulin: Füllstand aus Glooko-Verbrauch; ohne Daten Reichweite aus dem Wechselabstand."""
+        ic = self.insulin
+        info = self.z.get("insulin") or {}
+        tages_u = info.get("tagesverbrauch_u")
+        out: dict[str, Any] = {
+            "status": STATUS_AKTIV if c else STATUS_KEIN,
+            "zyklus": c,
+            "gesetzt_am": c["start"] if c else None,
+            "fuellstand_u": None,
+            "fuellstand_prozent": None,
+            "insulin_stand": None,
+            "tagesverbrauch_u": tages_u,
+            "insulin_voll_u": ic.voll_u,
+        }
+        if c is not None and tages_u:
+            start_u = ic.voll_u - (ic.fuellen_u if c.get("schlauch_gefuellt", True) else 0.0)
+            if info.get("zyklus_id") == c["id"]:
+                verbrauch = float(info.get("verbrauch_u") or 0.0)
+                stand = info.get("stand")
+            else:  # gerade gewechselt, Glooko hat noch nichts → voll
+                verbrauch, stand = 0.0, None
+            # Glooko hinkt ~90 min hinterher → ab Datenstand mit Ø-Verbrauch hochrechnen
+            bezug = max(parse(stand), parse(c["start"])) if stand else parse(c["start"])
+            seit_h = max((jetzt - bezug).total_seconds() / 3600, 0.0)
+            fuell = max(start_u - verbrauch - tages_u * seit_h / 24, 0.0)
+            rest_h = fuell / tages_u * 24
+            prozent = round(min(100.0, fuell / ic.voll_u * 100), 1)
+            out |= {
+                "fuellstand_u": round(fuell, 1),
+                "fuellstand_prozent": prozent,
+                "insulin_stand": stand,
+                "restzeit_h": round(rest_h, 1),
+                "restzeit_prozent": prozent,
+                "ablauf": iso(jetzt + timedelta(hours=rest_h)),
+                "status": STATUS_TOLERANZ if fuell <= ic.warnung_u else STATUS_AKTIV,
+                "reichweite_basis": "glooko",
+                "reichweite_d": round((fuell + vorrat * ic.nutzbar_u) / tages_u, 1),
+            }
+            if fuell <= 0:
+                out["status"] = STATUS_UEBERFAELLIG
+            return out
+        if tages_u:
+            out |= {"reichweite_basis": "glooko", "reichweite_d": round(vorrat * ic.nutzbar_u / tages_u, 1)}
+            return out
+        abstand_h = self.typischer_abstand_h(AMPULLE)
+        out |= {
+            "abstand_h": abstand_h,
+            "reichweite_basis": "median" if abstand_h else None,
+            "reichweite_d": round(vorrat * abstand_h / 24, 1) if abstand_h else None,
+        }
+        return out
 
     def typischer_abstand_h(self, typ: str, anzahl: int = 10) -> float | None:
         """Median der letzten abgeschlossenen Zyklusdauern (mind. 3), robust gegen Ausreißer."""
@@ -451,3 +540,17 @@ def luecke_stufe(minuten: float | None) -> str:
     if minuten <= 180:
         return LUECKE_1_BIS_3
     return LUECKE_UEBER_3
+
+
+def insulin_summe(
+    basal: list[tuple[datetime, datetime, float]], boli: list[tuple[datetime, float]],
+    von: datetime, bis: datetime,
+) -> float:
+    """Abgegebenes Insulin in [von, bis): Basal anteilig (Rate U/h × Überlappung) + Boli."""
+    u = 0.0
+    for s, e, rate in basal:
+        a, b = max(s, von), min(e, bis)
+        if b > a:
+            u += rate * (b - a).total_seconds() / 3600
+    u += sum(menge for t, menge in boli if von <= t < bis)
+    return u

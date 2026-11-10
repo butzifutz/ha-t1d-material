@@ -17,8 +17,11 @@ MIT_TRAGEZEIT = (SET, CGM)
 TYP_NAMEN = {
     SET: "Infusionsset",
     CGM: "CGM-Sensor",
-    AMPULLE: "Insulinampulle",
+    AMPULLE: "Insulin",
 }
+# Bezeichnung im Bestand und auf dem Wechsel-Button (bewusst je Zweck unterschiedlich)
+BESTAND_NAMEN = {SET: "Infusionssets", CGM: "Sensoren", AMPULLE: "Pump Carts"}
+WECHSEL_NAMEN = {SET: "Set wechseln", CGM: "Sensor wechseln", AMPULLE: "Reservoir wechseln"}
 
 # Glooko-Serie je Typ (CGM-Wechsel liefert Glooko nicht)
 GLOOKO_SERIE = {
@@ -37,16 +40,23 @@ CONF_TRAGEZEIT_D = "tragezeit_d"
 CONF_TOLERANZ_H = "toleranz_h"
 CONF_PACKUNG = "packung"
 CONF_PRODUKT = "produkt"
+CONF_INSULIN_VOLL_U = "insulin_voll_u"
+CONF_INSULIN_FUELLEN_U = "insulin_fuellen_u"
+CONF_INSULIN_WARNUNG_U = "insulin_warnung_u"
 
 DEFAULTS_GLOBAL = {
     CONF_INTERVALL_MIN: 60,
     CONF_MERGE_H: 2.0,
     CONF_DEDUPE_MIN: 30,
     CONF_EVIDENZ_H: 24,
+    CONF_INSULIN_VOLL_U: 160.0,     # volle Ampulle
+    CONF_INSULIN_FUELLEN_U: 12.0,   # Schlauch füllen
+    CONF_INSULIN_WARNUNG_U: 20.0,   # CamAPS FX warnt hier
 }
 
+
 # Standard-Packungsgrößen (in den Optionen änderbar).
-# Ampulle hat keine Tragezeit: leer ist sie, wenn CamAPS warnt – reiner Bestandstyp.
+# Ampulle hat keine Tragezeit; Füllstand wird (mit Glooko) aus Basal + Bolus berechnet.
 DEFAULTS_TYP = {
     SET: {CONF_TRAGEZEIT_D: 3.0, CONF_TOLERANZ_H: 12.0, CONF_PACKUNG: 10},
     CGM: {CONF_TRAGEZEIT_D: 10.0, CONF_TOLERANZ_H: 12.0, CONF_PACKUNG: 1, CONF_PRODUKT: "G7"},
@@ -94,7 +104,7 @@ PROBLEMARTEN = {SET: PROBLEMARTEN_SET, CGM: PROBLEMARTEN_CGM, AMPULLE: PROBLEMAR
 SETZSTELLEN_CGM = [
     "Oberarm",
     "Bauch",
-    "Oberes Gesäß (Alter 2–6)",
+    "Oberes Gesäß",
     "Rücken (Off-Label-Stelle)",
     "Bein (Off-Label-Stelle)",
     "Oberschenkel (Off-Label-Stelle)",
@@ -104,6 +114,10 @@ SETZSTELLEN_CGM = [
 ]
 SETZSTELLEN_SET = [s.replace(" (Off-Label-Stelle)", "") for s in SETZSTELLEN_CGM]
 SETZSTELLEN = {SET: SETZSTELLEN_SET, CGM: SETZSTELLEN_CGM, AMPULLE: []}
+# Anzeige → Originalwortlaut im Dexcom-Formular (Reklamationspaket)
+SETZSTELLE_DEXCOM = {"Oberes Gesäß": "Oberes Gesäß (Alter 2–6)"}
+# Früher gespeicherte Werte → aktuelle Anzeige
+SETZSTELLE_ALT = {v: k for k, v in SETZSTELLE_DEXCOM.items()}
 SEITEN = ["links", "rechts"]
 
 LUECKE_UNTER_1 = "Unter 1 Stunde"

@@ -17,6 +17,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .const import (
+    AMPULLE,
     CGM,
     MIT_TRAGEZEIT,
     STATUS_AKTIV,
@@ -83,6 +84,18 @@ SENSOREN: tuple[T1DSensorBeschreibung, ...] = (
         key="charge", icon="mdi:barcode", nur_typ=CGM,
         wert=lambda s: _zyk(s, "charge"),
         attribute=lambda s: {"seriennummer": _zyk(s, "seriennummer"), "produkt": _zyk(s, "produkt")},
+    ),
+    T1DSensorBeschreibung(
+        key="fuellstand", icon="mdi:needle", nur_typ=AMPULLE,
+        native_unit_of_measurement="U", state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=0, wert=lambda s: s.get("fuellstand_u"),
+        attribute=lambda s: {"prozent": s.get("fuellstand_prozent"), "datenstand": s.get("insulin_stand"),
+                             "restzeit_h": s.get("restzeit_h")},
+    ),
+    T1DSensorBeschreibung(
+        key="tagesverbrauch", icon="mdi:chart-bar", nur_typ=AMPULLE,
+        native_unit_of_measurement="U/d", state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=1, wert=lambda s: s.get("tagesverbrauch_u"),
     ),
     T1DSensorBeschreibung(
         key="quelle", entity_category=EntityCategory.DIAGNOSTIC,
