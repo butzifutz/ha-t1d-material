@@ -34,4 +34,4 @@ jobs:
       - uses: hacs/action@main
         with:
           category: integration
-          ignore: brands
+          ignore: brands license topics  # nur für den HACS-Standard-Store nötig
