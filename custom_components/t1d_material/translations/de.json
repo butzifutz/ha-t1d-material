@@ -40,7 +40,8 @@
           "glooko_password": "Glooko-Passwort",
           "insulin_voll_u": "Insulin: Inhalt volle Ampulle",
           "insulin_fuellen_u": "Insulin: Verlust beim Schlauchfüllen",
-          "insulin_warnung_u": "Insulin: Warnschwelle"
+          "insulin_warnung_u": "Insulin: Warnschwelle",
+          "insulin_kanuele_u": "Insulin: Kanüle füllen (je Setwechsel)"
         }
       }
     },
@@ -53,7 +54,7 @@
   "entity": {
     "sensor": {
       "gesetzt_am": {
-        "name": "Gesetzt am"
+        "name": "Gewechselt am"
       },
       "ablauf": {
         "name": "Ablauf"
@@ -73,7 +74,7 @@
           "aktiv": "Aktiv",
           "toleranz": "In Toleranz",
           "ueberfaellig": "Überfällig",
-          "kein_zyklus": "Kein Material gesetzt"
+          "kein_zyklus": "Kein Material erfasst"
         }
       },
       "reichweite": {
@@ -117,7 +118,7 @@
   "services": {
     "wechsel": {
       "name": "Material gewechselt",
-      "description": "Neues Material gesetzt; beendet das vorherige.",
+      "description": "Material gewechselt; beendet das vorherige.",
       "fields": {
         "typ": {
           "name": "Materialtyp",
@@ -171,9 +172,9 @@
           "name": "Sensor für Rücksendung verfügbar",
           "description": "Sensor für Rücksendung verfügbar"
         },
-        "schlauch_gefuellt": {
-          "name": "Schlauch gefüllt",
-          "description": "Schlauch gefüllt"
+        "schlauch_gewechselt": {
+          "name": "Schlauch gewechselt",
+          "description": "Schlauch neu gefüllt (kostet Insulin, wird vom Füllstand abgezogen)"
         }
       }
     },
@@ -271,9 +272,9 @@
           "name": "Sensor für Rücksendung verfügbar",
           "description": "Sensor für Rücksendung verfügbar"
         },
-        "schlauch_gefuellt": {
-          "name": "Schlauch gefüllt",
-          "description": "Schlauch gefüllt"
+        "schlauch_gewechselt": {
+          "name": "Schlauch gewechselt",
+          "description": "Schlauch neu gefüllt (kostet Insulin, wird vom Füllstand abgezogen)"
         }
       }
     },
@@ -367,6 +368,10 @@
         "insulin_warnung_u": {
           "name": "Insulin: Warnschwelle",
           "description": "Insulin: Warnschwelle"
+        },
+        "insulin_kanuele_u": {
+          "name": "Insulin: Kanüle füllen",
+          "description": "Insulin: Kanüle füllen (je Setwechsel)"
         }
       }
     },

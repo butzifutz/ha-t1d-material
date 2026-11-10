@@ -20,7 +20,7 @@ from .model import ModellFehler, parse
 MAX_FOTO = 15 * 1024 * 1024
 
 EXPORT_SPALTEN = [
-    "id", "typ", "start", "ende", "quelle", "setzstelle", "seite", "produkt", "charge", "schlauch_gefuellt",
+    "id", "typ", "start", "ende", "quelle", "setzstelle", "seite", "produkt", "charge", "schlauch_gewechselt",
     "seriennummer", "endgrund", "problemart", "problem_zeit", "problem_text", "ruecksendung",
     "groesste_luecke_min", "luecke_stufe", "evidenz_status", "foto",
 ]
@@ -105,7 +105,7 @@ class ExportView(HomeAssistantView):
     async def get(self, request: web.Request) -> web.Response:
         v = _v(request)
         return web.Response(
-            body=("﻿" + _csv(v.modell.z["zyklen"])).encode("utf-8"),  # BOM für Excel
+            body=("﻿" + _csv([v.modell.ansicht(c) for c in v.modell.z["zyklen"]])).encode("utf-8"),  # BOM für Excel
             content_type="text/csv",
             charset="utf-8",
             headers={"Content-Disposition": 'attachment; filename="t1d-material.csv"'},

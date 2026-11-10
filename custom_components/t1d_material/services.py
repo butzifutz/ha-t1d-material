@@ -16,6 +16,7 @@ from .const import (
     BESTAND_NAMEN,
     CGM,
     CONF_INSULIN_FUELLEN_U,
+    CONF_INSULIN_KANUELE_U,
     CONF_INSULIN_VOLL_U,
     CONF_INSULIN_WARNUNG_U,
     CONF_PACKUNG,
@@ -47,7 +48,8 @@ START_SCHEMA = {
     vol.Optional("charge"): OPT_STR,
     vol.Optional("seriennummer"): OPT_STR,
     vol.Optional("produkt"): vol.Any(None, vol.In(PRODUKTE)),
-    vol.Optional("schlauch_gefuellt"): vol.Any(None, cv.boolean),
+    vol.Optional("schlauch_gewechselt"): vol.Any(None, cv.boolean),
+    vol.Optional("schlauch_gefuellt"): vol.Any(None, cv.boolean),  # Name bis v0.2 (Offline-Warteschlange)
 }
 ENDE_SCHEMA = {
     vol.Optional("endgrund"): vol.Any(None, vol.In([ENDGRUND_REGULAER, ENDGRUND_VORZEITIG])),
@@ -89,6 +91,7 @@ EINSTELLUNGEN = vol.Schema({
     vol.Optional(CONF_INSULIN_VOLL_U): vol.All(ZAHL, vol.Range(min=10, max=1000)),
     vol.Optional(CONF_INSULIN_FUELLEN_U): vol.All(ZAHL, vol.Range(min=0, max=100)),
     vol.Optional(CONF_INSULIN_WARNUNG_U): vol.All(ZAHL, vol.Range(min=0, max=200)),
+    vol.Optional(CONF_INSULIN_KANUELE_U): vol.All(ZAHL, vol.Range(min=0, max=5)),
 })
 DATEN = vol.Schema({vol.Optional("historie", default=50): vol.All(vol.Coerce(int), vol.Range(min=0, max=10000))})
 
@@ -112,6 +115,9 @@ def _felder(d: dict, felder) -> dict[str, Any]:
 
 
 def _pruefe_listen(typ: str, d: dict) -> None:
+    if "schlauch_gefuellt" in d:  # alter Feldname
+        alt = d.pop("schlauch_gefuellt")
+        d.setdefault("schlauch_gewechselt", alt)
     if d.get("setzstelle") in SETZSTELLE_ALT:  # alter Wortlaut (z. B. aus App-Cache)
         d["setzstelle"] = SETZSTELLE_ALT[d["setzstelle"]]
     if d.get("setzstelle") and SETZSTELLEN[typ] and d["setzstelle"] not in SETZSTELLEN[typ]:
@@ -141,7 +147,7 @@ def registrieren(hass: HomeAssistant) -> None:
             typ, _zeit(d), dt_util.now(), start=start, ende=_felder(d, ENDE_FELDER),
             quelle=QUELLE_APP, request_id=d.get("request_id"), merge_fenster=v.merge_fenster,
         ))
-        return {"zyklus": c}
+        return {"zyklus": verwaltung(hass).modell.ansicht(c) if c else c}
 
     async def beenden(call: ServiceCall) -> ServiceResponse:
         d = dict(call.data)
@@ -149,7 +155,7 @@ def registrieren(hass: HomeAssistant) -> None:
         c = await ausfuehren(lambda m: m.beenden(
             d["typ"], _zeit(d), dt_util.now(), ende=_felder(d, ENDE_FELDER), request_id=d.get("request_id"),
         ))
-        return {"zyklus": c}
+        return {"zyklus": verwaltung(hass).modell.ansicht(c) if c else c}
 
     async def bearbeiten(call: ServiceCall) -> ServiceResponse:
         d = dict(call.data)
@@ -161,7 +167,7 @@ def registrieren(hass: HomeAssistant) -> None:
         _pruefe_listen(typ, d)
         felder = _felder(d, EDITIERBAR)
         c = await ausfuehren(lambda m: m.bearbeiten(d["zyklus_id"], felder, dt_util.now()))
-        return {"zyklus": c}
+        return {"zyklus": verwaltung(hass).modell.ansicht(c) if c else c}
 
     async def loeschen(call: ServiceCall) -> None:
         await ausfuehren(lambda m: m.loeschen(call.data["zyklus_id"], dt_util.now()))
@@ -193,7 +199,10 @@ def registrieren(hass: HomeAssistant) -> None:
         v = verwaltung(hass)
         jetzt = dt_util.now()
         m = v.modell
-        historie = sorted(m.z["zyklen"], key=lambda c: parse(c["start"]), reverse=True)[: call.data["historie"]]
+        historie = [
+            m.ansicht(c)
+            for c in sorted(m.z["zyklen"], key=lambda c: parse(c["start"]), reverse=True)[: call.data["historie"]]
+        ]
         return {
             "jetzt": iso(jetzt),
             "status": {t: _ohne_zyklus(m.status(t, jetzt)) for t in TYPEN},
@@ -234,6 +243,7 @@ def _config(v) -> dict[str, Any]:
         "insulin_voll_u": ic.voll_u,
         "insulin_fuellen_u": ic.fuellen_u,
         "insulin_warnung_u": ic.warnung_u,
+        "insulin_kanuele_u": ic.kanuele_u,
     }
 
 

@@ -40,7 +40,8 @@
           "glooko_password": "Glooko password",
           "insulin_voll_u": "Insulin: full cartridge",
           "insulin_fuellen_u": "Insulin: tubing fill loss",
-          "insulin_warnung_u": "Insulin: warning threshold"
+          "insulin_warnung_u": "Insulin: warning threshold",
+          "insulin_kanuele_u": "Insulin: cannula fill (per set change)"
         }
       }
     },
@@ -53,7 +54,7 @@
   "entity": {
     "sensor": {
       "gesetzt_am": {
-        "name": "Inserted at"
+        "name": "Changed at"
       },
       "ablauf": {
         "name": "Expires"
@@ -171,9 +172,9 @@
           "name": "Sensor available for return",
           "description": "Sensor available for return"
         },
-        "schlauch_gefuellt": {
-          "name": "Tubing filled",
-          "description": "Tubing filled"
+        "schlauch_gewechselt": {
+          "name": "Tubing changed",
+          "description": "Tubing primed (insulin is deducted from the fill level)"
         }
       }
     },
@@ -271,9 +272,9 @@
           "name": "Sensor available for return",
           "description": "Sensor available for return"
         },
-        "schlauch_gefuellt": {
-          "name": "Tubing filled",
-          "description": "Tubing filled"
+        "schlauch_gewechselt": {
+          "name": "Tubing changed",
+          "description": "Tubing primed (insulin is deducted from the fill level)"
         }
       }
     },
@@ -367,6 +368,10 @@
         "insulin_warnung_u": {
           "name": "Insulin: warning threshold",
           "description": "Insulin: warning threshold"
+        },
+        "insulin_kanuele_u": {
+          "name": "Insulin: cannula fill",
+          "description": "Insulin used to fill the cannula (per set change)"
         }
       }
     },

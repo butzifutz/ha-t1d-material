@@ -24,7 +24,7 @@ wechsel:
     produkt:
       required: false
       selector: {"select": {"options": ["G6", "G7", "Flex"]}}
-    schlauch_gefuellt:
+    schlauch_gewechselt:
       required: false
       selector: {"boolean": {}}
     endgrund:
@@ -94,7 +94,7 @@ bearbeiten:
     produkt:
       required: false
       selector: {"select": {"options": ["G6", "G7", "Flex"]}}
-    schlauch_gefuellt:
+    schlauch_gewechselt:
       required: false
       selector: {"boolean": {}}
     endgrund:
@@ -166,6 +166,9 @@ einstellungen_setzen:
     insulin_fuellen_u:
       required: false
       selector: {"number": {"min": 0, "max": 100, "step": 0.5, "mode": "box", "unit_of_measurement": "U"}}
+    insulin_kanuele_u:
+      required: false
+      selector: {"number": {"min": 0, "max": 5, "step": 0.1, "unit_of_measurement": "U"}}
     insulin_warnung_u:
       required: false
       selector: {"number": {"min": 0, "max": 200, "mode": "box", "unit_of_measurement": "U"}}

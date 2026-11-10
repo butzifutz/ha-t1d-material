@@ -17,7 +17,7 @@ Je Gerät *Infusionsset*, *CGM-Sensor* (mit Tragezeit) und *Insulin* (Füllstand
 
 | Entität | Inhalt |
 |---|---|
-| Gesetzt am, Ablauf, Toleranz-Ende | Zeitstempel |
+| Gewechselt am, Ablauf, Toleranz-Ende | Zeitstempel |
 | Restzeit, Restzeit (Prozent) | negativ, wenn überfällig |
 | Status | `aktiv`, `toleranz`, `ueberfaellig`, `kein_zyklus` |
 | Reichweite | Tage: Bestand × typischer Wechselabstand (Median, ab 3 Wechseln; sonst Soll-Tragezeit) + Rest des laufenden Materials. Insulin: (Füllstand + Bestand × nutzbare Menge) ÷ Ø-Tagesverbrauch |
@@ -51,4 +51,14 @@ Zyklen und Bestand liegen im HA-Store (`.storage/t1d_material.*`), Fotos und Evi
 
 Glooko hat keine offizielle API; der Login folgt [glooko-reader](https://github.com/spamsch/glooko-reader). Glooko-Zeitstempel tragen ein `Z`, sind aber Ortszeit. CamAPS FX lädt etwa alle 90 Minuten hoch.
 
-Insulin: `scheduledBasal` (enthält jedes Segment mehrfach → entdoppelt; Summe = Glookos `scheduledBasalsSum`) und `deliveredBolus`. Füllstand = Ampulleninhalt − Schlauchfüllen (falls beim Wechsel angegeben) − Verbrauch.
+Wechsel-Ereignisse (CamAPS FX):
+
+| Glooko-Serie | Aktion in CamAPS | Bedeutung hier |
+|---|---|---|
+| `setSiteChange` | Kanüle füllen | Setwechsel (wird automatisch angelegt) |
+| `reservoirChange` | Schlauch füllen | **kein** Reservoirwechsel – nur Schlauchfüllung (kostet Insulin); zusammen mit `setSiteChange` = Setwechsel mit Schlauch |
+| – | Rücklauf | liefert Glooko nicht |
+
+Reservoirwechsel und CGM-Wechsel werden deshalb nur in der App (oder per Service `wechsel`) erfasst.
+
+Insulin: `scheduledBasal` (enthält jedes Segment mehrfach → entdoppelt; Summe = Glookos `scheduledBasalsSum`) und `deliveredBolus`. Füllstand = Ampulleninhalt − je Schlauchfüllung (App-Auswahl „Schlauch gewechselt“ oder Glooko) − je Setwechsel das Kanülenfüllen (0,3 U) − Verbrauch.

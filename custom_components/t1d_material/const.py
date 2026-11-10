@@ -23,11 +23,13 @@ TYP_NAMEN = {
 BESTAND_NAMEN = {SET: "Infusionssets", CGM: "Sensoren", AMPULLE: "Pump Carts"}
 WECHSEL_NAMEN = {SET: "Set wechseln", CGM: "Sensor wechseln", AMPULLE: "Reservoir wechseln"}
 
-# Glooko-Serie je Typ (CGM-Wechsel liefert Glooko nicht)
-GLOOKO_SERIE = {
-    SET: "setSiteChange",
-    AMPULLE: "reservoirChange",
-}
+# Glooko-Serien (CamAPS FX, geprüft 2026-11):
+# - setSiteChange   = „Kanüle füllen“  → Setwechsel
+# - reservoirChange = „Schlauch füllen“ → KEIN Reservoirwechsel, nur Schlauchfüllung (kostet Insulin)
+# Den Rücklauf (echter Reservoirwechsel) und CGM-Wechsel liefert Glooko nicht → nur per App.
+GLOOKO_SERIE = {SET: "setSiteChange"}
+GLOOKO_SCHLAUCH = "reservoirChange"
+SCHLAUCH_FENSTER_MIN = 15  # Schlauchfüllung gehört zu einem Wechsel, wenn so nah am Start
 
 # Config-Schlüssel
 CONF_EMAIL = "glooko_email"
@@ -43,6 +45,7 @@ CONF_PRODUKT = "produkt"
 CONF_INSULIN_VOLL_U = "insulin_voll_u"
 CONF_INSULIN_FUELLEN_U = "insulin_fuellen_u"
 CONF_INSULIN_WARNUNG_U = "insulin_warnung_u"
+CONF_INSULIN_KANUELE_U = "insulin_kanuele_u"
 
 DEFAULTS_GLOBAL = {
     CONF_INTERVALL_MIN: 60,
@@ -52,6 +55,7 @@ DEFAULTS_GLOBAL = {
     CONF_INSULIN_VOLL_U: 160.0,     # volle Ampulle
     CONF_INSULIN_FUELLEN_U: 12.0,   # Schlauch füllen
     CONF_INSULIN_WARNUNG_U: 20.0,   # CamAPS FX warnt hier
+    CONF_INSULIN_KANUELE_U: 0.3,    # Kanüle füllen (jeder Setwechsel)
 }
 
 

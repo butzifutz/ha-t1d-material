@@ -30,6 +30,7 @@ TZ = ZoneInfo("Europe/Berlin")
 T0 = datetime(2026, 11, 1, 8, 0, tzinfo=TZ)
 H = timedelta(hours=1)
 M = timedelta(minutes=1)
+SEK = timedelta(seconds=1)
 MERGE = 2 * H
 DEDUPE = 30 * M
 
@@ -294,7 +295,7 @@ def test_insulin_fuellstand_aus_glooko():
     m = neues_modell()
     m.insulin = InsulinConfig(160, 12, 20)
     m.bestand_setzen(AMPULLE, 5, T0)
-    c = m.wechsel(AMPULLE, T0, T0, start={"schlauch_gefuellt": True})
+    c = m.wechsel(AMPULLE, T0, T0, start={"schlauch_gewechselt": True})
     stand = T0 + 24 * H
     m.z["insulin"] = {"zyklus_id": c["id"], "verbrauch_u": 40.0, "stand": stand.isoformat(),
                       "tagesverbrauch_u": 48.0}
@@ -306,17 +307,18 @@ def test_insulin_fuellstand_aus_glooko():
     s2 = m.status(AMPULLE, stand + 90 * M)
     assert s2["fuellstand_u"] == 105.0
     # ohne Schlauchfüllen 12 U mehr
-    c["schlauch_gefuellt"] = False
+    m.bearbeiten(c["id"], {"schlauch_gewechselt": False}, stand)
     assert m.status(AMPULLE, stand)["fuellstand_u"] == 120
+    assert m.status(AMPULLE, stand)["zyklus"]["schlauch_gewechselt"] is False
 
 
 def test_insulin_warnung_und_leer():
     m = neues_modell()
     c = m.wechsel(AMPULLE, T0, T0)
-    m.z["insulin"] = {"zyklus_id": c["id"], "verbrauch_u": 135.0, "stand": (T0 + 70 * H).isoformat(),
+    m.z["insulin"] = {"zyklus_id": c["id"], "verbrauch_u": 145.0, "stand": (T0 + 70 * H).isoformat(),
                       "tagesverbrauch_u": 48.0}
     assert m.status(AMPULLE, T0 + 70 * H)["status"] == STATUS_TOLERANZ  # 13 U ≤ 20 U
-    m.z["insulin"]["verbrauch_u"] = 150.0
+    m.z["insulin"]["verbrauch_u"] = 165.0
     assert m.status(AMPULLE, T0 + 70 * H)["status"] == STATUS_UEBERFAELLIG
 
 
@@ -325,7 +327,7 @@ def test_insulin_neuer_wechsel_vor_glooko_daten_gilt_als_voll():
     alt = m.wechsel(AMPULLE, T0, T0)
     m.z["insulin"] = {"zyklus_id": alt["id"], "verbrauch_u": 100.0, "stand": (T0 + 60 * H).isoformat(),
                       "tagesverbrauch_u": 48.0}
-    m.wechsel(AMPULLE, T0 + 61 * H, T0 + 61 * H)
+    m.wechsel(AMPULLE, T0 + 61 * H, T0 + 61 * H, start={"schlauch_gewechselt": True})
     assert m.status(AMPULLE, T0 + 61 * H)["fuellstand_u"] == 148
 
 
@@ -340,3 +342,74 @@ def test_setzstelle_ohne_altersangabe_und_migration():
     assert migrieren(z) is True
     assert z["zyklen"][0]["setzstelle"] == "Oberes Gesäß" and z["insulin"] == {}
     assert migrieren(z) is False
+
+
+def _insulin_modell():
+    m = neues_modell()
+    m.insulin = InsulinConfig(160, 12, 20, 0.3)
+    c = m.wechsel(AMPULLE, T0, T0)  # Reservoir: nur per App, Standard ohne Schlauch
+    m.z["insulin"] = {"zyklus_id": c["id"], "verbrauch_u": 0.0, "stand": (T0 + 100 * H).isoformat(),
+                      "tagesverbrauch_u": 48.0}
+    return m, c
+
+
+def test_glooko_schlauch_allein_ist_kein_reservoirwechsel():
+    m, c = _insulin_modell()
+    assert m.glooko_schlauch([T0 + 50 * H], T0 + 51 * H) == 1
+    assert m.aktiv(AMPULLE)["id"] == c["id"]  # kein neuer Reservoir-Zyklus
+    assert m.status(AMPULLE, T0 + 100 * H)["fuellstand_u"] == 160 - 12
+    # erneuter Abgleich mit demselben Event: nichts doppelt
+    assert m.glooko_schlauch([T0 + 50 * H, T0 + 50 * H + 5 * M], T0 + 52 * H) == 0
+
+
+def test_glooko_setwechsel_mit_schlauch_kostet_schlauch_und_kanuele():
+    m, c = _insulin_modell()
+    t = T0 + 70 * H
+    m.glooko_events(SET, [t + 25 * SEK], t + H, DEDUPE, MERGE)
+    m.glooko_schlauch([t], t + H)
+    s = m.status(SET, t + H)
+    assert s["zyklus"]["schlauch_gewechselt"] is True
+    ins = m.status(AMPULLE, T0 + 100 * H)
+    assert ins["fuellstand_u"] == pytest.approx(160 - 12 - 0.3)
+    assert ins["schlauch_fuellungen"] == 1 and ins["kanuele_fuellungen"] == 1
+
+
+def test_app_setwechsel_ohne_schlauch_nur_kanuele():
+    m, c = _insulin_modell()
+    sc = m.wechsel(SET, T0 + 70 * H, T0 + 70 * H)
+    assert m.ansicht(sc)["schlauch_gewechselt"] is False
+    assert m.status(AMPULLE, T0 + 100 * H)["fuellstand_u"] == pytest.approx(160 - 0.3)
+    sc2 = m.wechsel(SET, T0 + 80 * H, T0 + 80 * H, start={"schlauch_gewechselt": True})
+    assert m.status(AMPULLE, T0 + 100 * H)["fuellstand_u"] == pytest.approx(160 - 12 - 0.6)
+    # App-Chip + späteres Glooko-Event am selben Wechsel: nur einmal
+    m.glooko_schlauch([T0 + 80 * H + 3 * M], T0 + 90 * H)
+    assert m.status(AMPULLE, T0 + 100 * H)["schlauch_fuellungen"] == 1
+    # Löschen des Setwechsels nimmt die App-Füllung mit... die Glooko-Bestätigung bleibt
+    m.loeschen(sc2["id"], T0 + 95 * H)
+    assert m.status(AMPULLE, T0 + 100 * H)["schlauch_fuellungen"] == 1
+
+
+def test_schlauch_abgewaehlt_bleibt_aus_trotz_glooko():
+    m, c = _insulin_modell()
+    t = T0 + 70 * H
+    m.glooko_events(SET, [t], t + H, DEDUPE, MERGE)
+    m.glooko_schlauch([t], t + H)
+    sc = m.aktiv(SET)
+    m.bearbeiten(sc["id"], {"schlauch_gewechselt": False}, t + 2 * H)
+    assert m.glooko_schlauch([t], t + 3 * H) == 0
+    assert m.status(SET, t + 3 * H)["zyklus"]["schlauch_gewechselt"] is False
+    assert m.status(AMPULLE, T0 + 100 * H)["fuellstand_u"] == pytest.approx(160 - 0.3)
+
+
+def test_migration_schlauch_gefuellt():
+    z = leerer_zustand(T0)
+    del z["schlauch"]
+    z["zyklen"] = [
+        {"id": "a", "typ": AMPULLE, "start": T0.isoformat(), "ende": None, "quelle": "app"},
+        {"id": "b", "typ": AMPULLE, "start": (T0 - 80 * H).isoformat(), "ende": T0.isoformat(), "quelle": "app",
+         "schlauch_gefuellt": False},
+    ]
+    m = Modell(z, neues_modell().config)
+    assert [f["zyklus_id"] for f in z["schlauch"]] == ["a"]  # Standard war „ja“
+    assert "schlauch_gefuellt" not in z["zyklen"][1]
+    assert m.ansicht(z["zyklen"][0])["schlauch_gewechselt"] is True

@@ -10,7 +10,8 @@ Der Zustand ist ein JSON-fähiges dict, damit er direkt im HA-Store liegt:
       "buchungen": [ {zeit, typ, delta, grund, zyklus_id}, ... ],
       "request_ids": {request_id: zyklus_id | None},
       "glooko": {"letzter_sync": iso|None, "fehler": str|None, "initialisiert": {typ: bool}},
-      "insulin": {"zyklus_id", "verbrauch_u", "stand": iso, "tagesverbrauch_u"}   # aus Glooko
+      "insulin": {"zyklus_id", "verbrauch_u", "stand": iso, "tagesverbrauch_u"},  # aus Glooko
+      "schlauch": [ {zeit, quelle, zyklus_id}, ... ]   # Schlauchfüllungen (App-Chip oder Glooko)
     }
 """
 
@@ -33,6 +34,8 @@ from .const import (
     QUELLE_APP,
     QUELLE_GLOOKO,
     QUELLE_ZUSAMMEN,
+    SCHLAUCH_FENSTER_MIN,
+    SET,
     SETZSTELLE_ALT,
     STATUS_AKTIV,
     STATUS_KEIN,
@@ -42,9 +45,11 @@ from .const import (
 )
 
 MAX_REQUEST_IDS = 1000
+SCHLAUCH_FENSTER = timedelta(minutes=SCHLAUCH_FENSTER_MIN)
+SCHLAUCH_AUFBEWAHREN = timedelta(days=120)
 
 # Felder, die beim Setzen eines Materials erfasst werden
-START_FELDER = ("setzstelle", "seite", "charge", "seriennummer", "produkt", "foto", "schlauch_gefuellt")
+START_FELDER = ("setzstelle", "seite", "charge", "seriennummer", "produkt", "foto", "schlauch_gewechselt")
 # Felder, die das Ende eines Zyklus beschreiben (Reklamation)
 ENDE_FELDER = (
     "endgrund",
@@ -72,6 +77,7 @@ class InsulinConfig:
     voll_u: float = 160.0      # Inhalt einer vollen Ampulle
     fuellen_u: float = 12.0    # Verlust beim Schlauchfüllen
     warnung_u: float = 20.0    # ab hier "bald wechseln" (CamAPS-Warnung)
+    kanuele_u: float = 0.3     # Kanüle füllen bei jedem Setwechsel
 
     @property
     def nutzbar_u(self) -> float:
@@ -102,6 +108,7 @@ def leerer_zustand(jetzt: datetime) -> dict[str, Any]:
         "request_ids": {},
         "glooko": {"letzter_sync": None, "fehler": None, "initialisiert": {}},
         "insulin": {},
+        "schlauch": [],
     }
 
 
@@ -110,6 +117,15 @@ def migrieren(z: dict[str, Any]) -> bool:
     geaendert = False
     if "insulin" not in z:
         z["insulin"] = {}
+        geaendert = True
+    if "schlauch" not in z:
+        # v0.2: Feld schlauch_gefuellt am Reservoir-Zyklus (Standard: ja) → Liste der Schlauchfüllungen
+        z["schlauch"] = []
+        for c in z["zyklen"]:
+            if c["typ"] == AMPULLE and c.pop("schlauch_gefuellt", True):
+                z["schlauch"].append({"zeit": c["start"], "quelle": QUELLE_APP, "zyklus_id": c["id"]})
+                c["schlauch_gewechselt"] = True
+            c.pop("schlauch_gefuellt", None)
         geaendert = True
     for c in z["zyklen"]:
         alt = c.get("setzstelle")
@@ -139,6 +155,45 @@ class Modell:
             if c["id"] == zyklus_id:
                 return c
         raise ModellFehler(f"Zyklus {zyklus_id} nicht gefunden")
+
+    # ------------------------------------------------------- Schlauchfüllungen
+    def schlauch_zeiten(self) -> list[datetime]:
+        return sorted(parse(f["zeit"]) for f in self.z["schlauch"] if not f.get("aus"))
+
+    def _schlauch_nahe(self, zeit: datetime, auch_aus: bool = False) -> list[dict]:
+        return [
+            f for f in self.z["schlauch"]
+            if abs(parse(f["zeit"]) - zeit) <= SCHLAUCH_FENSTER and (auch_aus or not f.get("aus"))
+        ]
+
+    def mit_schlauch(self, c: dict) -> bool:
+        """Wurde beim Start dieses Zyklus ein Schlauch gefüllt (App-Chip oder Glooko)?"""
+        return c["typ"] in (SET, AMPULLE) and bool(self._schlauch_nahe(parse(c["start"])))
+
+    def ansicht(self, c: dict | None) -> dict | None:
+        """Zyklus für Ausgabe (App/Sensoren) inkl. berechnetem Schlauch-Flag."""
+        if c is None:
+            return None
+        out = dict(c)
+        if c["typ"] in (SET, AMPULLE):
+            out["schlauch_gewechselt"] = self.mit_schlauch(c)
+        return out
+
+    def _schlauch_setzen(self, c: dict, an: bool, jetzt: datetime) -> None:
+        nahe = self._schlauch_nahe(parse(c["start"]), auch_aus=True)
+        if an:
+            for f in nahe:
+                f.pop("aus", None)
+            if not nahe:
+                self.z["schlauch"].append({"zeit": c["start"], "quelle": QUELLE_APP, "zyklus_id": c["id"]})
+        else:
+            for f in nahe:
+                if f["quelle"] == QUELLE_APP:
+                    self.z["schlauch"].remove(f)
+                else:  # Glooko-Füllung merken, aber nicht zählen (sonst käme sie beim Abgleich wieder)
+                    f["aus"] = True
+        c["schlauch_gewechselt"] = an
+        c["geaendert"] = iso(jetzt)
 
     def aktiv(self, typ: str) -> dict | None:
         offen = [c for c in self.zyklen(typ) if c["ende"] is None]
@@ -192,7 +247,7 @@ class Modell:
         reichweite_h = vorrat * abstand_h + max(rest_typisch_h, 0)
         return basis | {
             "status": st,
-            "zyklus": c,
+            "zyklus": self.ansicht(c),
             "gesetzt_am": c["start"],
             "ablauf": iso(ablauf),
             "toleranz_ende": iso(tol_ende),
@@ -210,7 +265,7 @@ class Modell:
         tages_u = info.get("tagesverbrauch_u")
         out: dict[str, Any] = {
             "status": STATUS_AKTIV if c else STATUS_KEIN,
-            "zyklus": c,
+            "zyklus": self.ansicht(c),
             "gesetzt_am": c["start"] if c else None,
             "fuellstand_u": None,
             "fuellstand_prozent": None,
@@ -219,7 +274,11 @@ class Modell:
             "insulin_voll_u": ic.voll_u,
         }
         if c is not None and tages_u:
-            start_u = ic.voll_u - (ic.fuellen_u if c.get("schlauch_gefuellt", True) else 0.0)
+            # Abzüge seit dem Einsetzen: jede Schlauchfüllung, jedes Kanülenfüllen (Setwechsel)
+            ab = parse(c["start"]) - SCHLAUCH_FENSTER
+            n_schlauch = sum(1 for t in self.schlauch_zeiten() if ab <= t <= jetzt)
+            n_kanuele = sum(1 for s in self.zyklen(SET) if ab <= parse(s["start"]) <= jetzt)
+            start_u = ic.voll_u - n_schlauch * ic.fuellen_u - n_kanuele * ic.kanuele_u
             if info.get("zyklus_id") == c["id"]:
                 verbrauch = float(info.get("verbrauch_u") or 0.0)
                 stand = info.get("stand")
@@ -233,6 +292,8 @@ class Modell:
             prozent = round(min(100.0, fuell / ic.voll_u * 100), 1)
             out |= {
                 "fuellstand_u": round(fuell, 1),
+                "schlauch_fuellungen": n_schlauch,
+                "kanuele_fuellungen": n_kanuele,
                 "fuellstand_prozent": prozent,
                 "insulin_stand": stand,
                 "restzeit_h": round(rest_h, 1),
@@ -334,6 +395,8 @@ class Modell:
             for c in self.zyklen(typ):
                 if c["quelle"] == QUELLE_GLOOKO and abs(parse(c["start"]) - zeit) <= merge_fenster:
                     self._uebernimm(c, start, START_FELDER)
+                    if start.get("schlauch_gewechselt"):
+                        self._schlauch_setzen(c, True, jetzt)
                     c["quelle"] = QUELLE_ZUSAMMEN
                     c["geaendert"] = iso(jetzt)
                     vorher = self._vorgaenger(typ, parse(c["start"]))
@@ -361,6 +424,8 @@ class Modell:
         }
         self._uebernimm(c, start, START_FELDER)
         self.z["zyklen"].append(c)
+        if start.get("schlauch_gewechselt") and typ in (SET, AMPULLE):
+            self._schlauch_setzen(c, True, jetzt)
 
         einrichtung = parse(self.z["einrichtung"])
         if quelle != QUELLE_GLOOKO or zeit >= einrichtung:
@@ -400,6 +465,8 @@ class Modell:
         unbekannt = set(daten) - set(EDITIERBAR)
         if unbekannt:
             raise ModellFehler(f"Nicht editierbar: {', '.join(sorted(unbekannt))}")
+        daten = dict(daten)
+        schlauch = daten.pop("schlauch_gewechselt", None)
         neu = dict(c)
         for k, v in daten.items():
             neu[k] = v
@@ -412,8 +479,15 @@ class Modell:
             a_s, a_e = parse(andere["start"]), parse(andere["ende"])
             if _ueberlappt(s, e, a_s, a_e):
                 raise ModellFehler("Zeitraum überschneidet sich mit einem anderen Zyklus")
+        alt_start = c["start"]
         c.update(neu)
         c["geaendert"] = iso(jetzt)
+        if c["start"] != alt_start:  # App-Schlauchfüllung wandert mit dem Start
+            for f in self.z["schlauch"]:
+                if f.get("zyklus_id") == c["id"] and f["quelle"] == QUELLE_APP:
+                    f["zeit"] = c["start"]
+        if schlauch is not None and c["typ"] in (SET, AMPULLE):
+            self._schlauch_setzen(c, bool(schlauch), jetzt)
         if "ende" in daten and daten["ende"] is not None and c["typ"] == CGM:
             c["evidenz_status"] = "offen"
         return c
@@ -432,6 +506,9 @@ class Modell:
                 vorher.pop("evidenz_status", None)
             vorher["geaendert"] = iso(jetzt)
         self.z["zyklen"].remove(c)
+        self.z["schlauch"] = [
+            f for f in self.z["schlauch"] if not (f.get("zyklus_id") == c["id"] and f["quelle"] == QUELLE_APP)
+        ]
         if c.get("gebucht"):
             self._buchen(typ, +1, "loeschen", jetzt, c["id"])
 
@@ -492,6 +569,22 @@ class Modell:
             c = self.wechsel(typ, t, jetzt, quelle=QUELLE_GLOOKO, merge_fenster=merge_fenster)
             geaendert.append(c)
         return geaendert
+
+    def glooko_schlauch(self, zeiten: list[datetime], jetzt: datetime) -> int:
+        """„Schlauch füllen“ aus Glooko übernehmen. Gibt die Zahl neuer Füllungen zurück."""
+        neu = 0
+        for t in dedupe_zeiten(zeiten, SCHLAUCH_FENSTER):
+            nahe = self._schlauch_nahe(t, auch_aus=True)
+            if nahe:
+                for f in nahe:
+                    if f["quelle"] == QUELLE_APP:
+                        f["quelle"] = QUELLE_ZUSAMMEN
+                continue
+            self.z["schlauch"].append({"zeit": iso(t), "quelle": QUELLE_GLOOKO, "zyklus_id": None})
+            neu += 1
+        grenze = jetzt - SCHLAUCH_AUFBEWAHREN
+        self.z["schlauch"] = [f for f in self.z["schlauch"] if parse(f["zeit"]) >= grenze]
+        return neu
 
     def offene_evidenz(self) -> list[dict]:
         return [

@@ -22,6 +22,7 @@ from .const import (
     CONF_EMAIL,
     CONF_EVIDENZ_H,
     CONF_INSULIN_FUELLEN_U,
+    CONF_INSULIN_KANUELE_U,
     CONF_INSULIN_VOLL_U,
     CONF_INSULIN_WARNUNG_U,
     CONF_MERGE_H,
@@ -34,6 +35,7 @@ from .const import (
     DEFAULTS_GLOBAL,
     DEFAULTS_TYP,
     AMPULLE,
+    GLOOKO_SCHLAUCH,
     GLOOKO_SERIE,
     MIT_TRAGEZEIT,
     STORAGE_KEY,
@@ -114,6 +116,7 @@ class Verwaltung:
             voll_u=float(self.cfg[CONF_INSULIN_VOLL_U]),
             fuellen_u=float(self.cfg[CONF_INSULIN_FUELLEN_U]),
             warnung_u=float(self.cfg[CONF_INSULIN_WARNUNG_U]),
+            kanuele_u=float(self.cfg.get(CONF_INSULIN_KANUELE_U, DEFAULTS_GLOBAL[CONF_INSULIN_KANUELE_U])),
         )
 
     def config_uebernehmen(self) -> None:
@@ -183,7 +186,7 @@ class Verwaltung:
         g = self.modell.z["glooko"]
         try:
             serien = await self._glooko.serien(
-                jetzt - GLOOKO_FENSTER, jetzt + timedelta(days=1), list(GLOOKO_SERIE.values())
+                jetzt - GLOOKO_FENSTER, jetzt + timedelta(days=1), [*GLOOKO_SERIE.values(), GLOOKO_SCHLAUCH]
             )
             async with self._lock:
                 for typ, serie in GLOOKO_SERIE.items():
@@ -192,6 +195,10 @@ class Verwaltung:
                     neu = self.modell.glooko_events(typ, zeiten, jetzt, self.dedupe, self.merge_fenster)
                     for c in neu:
                         _LOGGER.info("Glooko: %s-Wechsel %s übernommen (%s)", typ, c["start"], c["quelle"])
+                schlauch = [glooko_zeit(p["timestamp"], tz) for p in serien[GLOOKO_SCHLAUCH] if p.get("timestamp")]
+                n = self.modell.glooko_schlauch([z for z in schlauch if z <= jetzt + timedelta(minutes=5)], jetzt)
+                if n:
+                    _LOGGER.info("Glooko: %d Schlauchfüllung(en) übernommen", n)
                 g["letzter_sync"] = iso(jetzt)
                 g["fehler"] = None
                 await self._speichern()
