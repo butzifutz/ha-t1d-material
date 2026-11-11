@@ -23,10 +23,12 @@ TYP_NAMEN = {
 BESTAND_NAMEN = {SET: "Infusionssets", CGM: "Sensoren", AMPULLE: "Pump Carts"}
 WECHSEL_NAMEN = {SET: "Set wechseln", CGM: "Sensor wechseln", AMPULLE: "Reservoir wechseln"}
 
-# Glooko-Serien (CamAPS FX, geprüft 2026-11):
+# Glooko-Serien (CamAPS FX, geprüft 2026-11). Glooko liefert nur Art + Zeit, keine Füllmenge, keinen Rücklauf:
 # - setSiteChange   = „Kanüle füllen“  → Setwechsel
-# - reservoirChange = „Schlauch füllen“ → KEIN Reservoirwechsel, nur Schlauchfüllung (kostet Insulin)
-# Den Rücklauf (echter Reservoirwechsel) und CGM-Wechsel liefert Glooko nicht → nur per App.
+# - reservoirChange = „Schlauch füllen“ (auch das kurze Füllen nach Reservoirwechsel, Stempel anfahren)
+#   · zusammen mit setSiteChange (±15 min) → Setwechsel mit Schlauch (Schlauchfüllung)
+#   · allein → (sehr wahrscheinlich) Reservoirwechsel ohne Schlauch – nur wenn Reservoir-Erkennung an
+# CGM-Wechsel liefert Glooko nicht → nur per App.
 GLOOKO_SERIE = {SET: "setSiteChange"}
 GLOOKO_SCHLAUCH = "reservoirChange"
 SCHLAUCH_FENSTER_MIN = 15  # Schlauchfüllung gehört zu einem Wechsel, wenn so nah am Start
@@ -46,6 +48,12 @@ CONF_INSULIN_VOLL_U = "insulin_voll_u"
 CONF_INSULIN_FUELLEN_U = "insulin_fuellen_u"
 CONF_INSULIN_WARNUNG_U = "insulin_warnung_u"
 CONF_INSULIN_KANUELE_U = "insulin_kanuele_u"
+CONF_INSULIN_RESERVOIR_U = "insulin_reservoir_u"
+CONF_RESERVOIR_ERKENNEN = "reservoir_erkennen"
+CONF_TIR_SEHR_TIEF = "tir_sehr_tief"
+CONF_TIR_TIEF = "tir_tief"
+CONF_TIR_HOCH = "tir_hoch"
+CONF_TIR_SEHR_HOCH = "tir_sehr_hoch"
 
 DEFAULTS_GLOBAL = {
     CONF_INTERVALL_MIN: 60,
@@ -56,7 +64,18 @@ DEFAULTS_GLOBAL = {
     CONF_INSULIN_FUELLEN_U: 12.0,   # Schlauch füllen
     CONF_INSULIN_WARNUNG_U: 20.0,   # CamAPS FX warnt hier
     CONF_INSULIN_KANUELE_U: 0.3,    # Kanüle füllen (jeder Setwechsel)
+    CONF_INSULIN_RESERVOIR_U: 1.0,  # Reservoirwechsel ohne Schlauch: Stempel anfahren
+    CONF_RESERVOIR_ERKENNEN: True,  # Reservoirwechsel aus Glooko ableiten (Annahme, s. o.)
+    # Glukose-Bereiche in mg/dl (internationaler Konsens): <54 | 54–69 | 70–180 | 181–250 | >250
+    CONF_TIR_SEHR_TIEF: 54,
+    CONF_TIR_TIEF: 70,
+    CONF_TIR_HOCH: 180,
+    CONF_TIR_SEHR_HOCH: 250,
 }
+
+# Gleitende Zeitfenster für die Zeit im Zielbereich
+TIR_FENSTER = {"24h": 1, "7d": 7, "14d": 14}
+TIR_KATEGORIEN = ("im_ziel", "tief", "sehr_tief", "hoch", "sehr_hoch")
 
 
 # Standard-Packungsgrößen (in den Optionen änderbar).

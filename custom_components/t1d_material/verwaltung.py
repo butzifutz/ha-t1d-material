@@ -23,6 +23,12 @@ from .const import (
     CONF_EVIDENZ_H,
     CONF_INSULIN_FUELLEN_U,
     CONF_INSULIN_KANUELE_U,
+    CONF_INSULIN_RESERVOIR_U,
+    CONF_RESERVOIR_ERKENNEN,
+    CONF_TIR_HOCH,
+    CONF_TIR_SEHR_HOCH,
+    CONF_TIR_SEHR_TIEF,
+    CONF_TIR_TIEF,
     CONF_INSULIN_VOLL_U,
     CONF_INSULIN_WARNUNG_U,
     CONF_MERGE_H,
@@ -39,7 +45,10 @@ from .const import (
     GLOOKO_SERIE,
     MIT_TRAGEZEIT,
     STORAGE_KEY,
+    SCHLAUCH_FENSTER_MIN,
+    SET,
     STORAGE_VERSION,
+    TIR_FENSTER,
     TYPEN,
 )
 from .glooko import (
@@ -62,6 +71,7 @@ from .model import (
     luecke_stufe,
     migrieren,
     parse,
+    tir_statistik,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -96,6 +106,7 @@ class Verwaltung:
         self.modell: Modell
         self.verzeichnis = Path(hass.config.path(DATA_DIR))
         self._glooko: GlookoClient | None = None
+        self._cgm: list[tuple[datetime, int]] = []  # CGM-Werte der letzten 14 Tage (für TIR)
         if self.cfg.get(CONF_EMAIL) and self.cfg.get(CONF_PASSWORD):
             session = async_create_clientsession(hass, auto_cleanup=True)
             self._glooko = GlookoClient(session, self.cfg[CONF_EMAIL], self.cfg[CONF_PASSWORD])
@@ -116,14 +127,25 @@ class Verwaltung:
             voll_u=float(self.cfg[CONF_INSULIN_VOLL_U]),
             fuellen_u=float(self.cfg[CONF_INSULIN_FUELLEN_U]),
             warnung_u=float(self.cfg[CONF_INSULIN_WARNUNG_U]),
-            kanuele_u=float(self.cfg.get(CONF_INSULIN_KANUELE_U, DEFAULTS_GLOBAL[CONF_INSULIN_KANUELE_U])),
+            kanuele_u=float(self.cfg[CONF_INSULIN_KANUELE_U]),
+            reservoir_u=float(self.cfg[CONF_INSULIN_RESERVOIR_U]),
         )
+
+    @property
+    def reservoir_erkennen(self) -> bool:
+        return bool(self.cfg[CONF_RESERVOIR_ERKENNEN])
+
+    @property
+    def tir_grenzen(self) -> tuple[float, float, float, float]:
+        return tuple(float(self.cfg[k]) for k in (CONF_TIR_SEHR_TIEF, CONF_TIR_TIEF, CONF_TIR_HOCH, CONF_TIR_SEHR_HOCH))
 
     def config_uebernehmen(self) -> None:
         """Geänderte Optionen ohne Neuladen anwenden (Tragezeiten, Packungen, Insulin)."""
         self.cfg = wirksame_config(self.entry)
         self.modell.config = self.typ_config()
         self.modell.insulin = self.insulin_config()
+        if self._cgm:  # neue Grenzen sofort anwenden
+            self.modell.z["tir"] = self._tir(self._cgm)
         self.benachrichtigen()
 
     @property
@@ -189,20 +211,35 @@ class Verwaltung:
                 jetzt - GLOOKO_FENSTER, jetzt + timedelta(days=1), [*GLOOKO_SERIE.values(), GLOOKO_SCHLAUCH]
             )
             async with self._lock:
+                def zeiten(serie: str) -> list[datetime]:
+                    z = [glooko_zeit(p["timestamp"], tz) for p in serien[serie] if p.get("timestamp")]
+                    return [t for t in z if t <= jetzt + timedelta(minutes=5)]
+
                 for typ, serie in GLOOKO_SERIE.items():
-                    zeiten = [glooko_zeit(p["timestamp"], tz) for p in serien[serie] if p.get("timestamp")]
-                    zeiten = [z for z in zeiten if z <= jetzt + timedelta(minutes=5)]
-                    neu = self.modell.glooko_events(typ, zeiten, jetzt, self.dedupe, self.merge_fenster)
+                    neu = self.modell.glooko_events(typ, zeiten(serie), jetzt, self.dedupe, self.merge_fenster)
                     for c in neu:
                         _LOGGER.info("Glooko: %s-Wechsel %s übernommen (%s)", typ, c["start"], c["quelle"])
-                schlauch = [glooko_zeit(p["timestamp"], tz) for p in serien[GLOOKO_SCHLAUCH] if p.get("timestamp")]
-                n = self.modell.glooko_schlauch([z for z in schlauch if z <= jetzt + timedelta(minutes=5)], jetzt)
+                # „Schlauch füllen“: mit Kanüle füllen daneben = Setwechsel mit Schlauch, sonst Reservoirwechsel
+                fenster = timedelta(minutes=SCHLAUCH_FENSTER_MIN)
+                kanuele = zeiten(GLOOKO_SERIE[SET])
+                mit_set, allein = [], []
+                for t in zeiten(GLOOKO_SCHLAUCH):
+                    (mit_set if any(abs(t - k) <= fenster for k in kanuele) else allein).append(t)
+                n = self.modell.glooko_reservoir_zuruecknehmen(mit_set, jetzt)
+                if n:
+                    _LOGGER.info("Glooko: %d Reservoirwechsel als Setwechsel mit Schlauch erkannt", n)
+                n = self.modell.glooko_schlauch(mit_set, jetzt, reservoir=allein)
                 if n:
                     _LOGGER.info("Glooko: %d Schlauchfüllung(en) übernommen", n)
+                if self.reservoir_erkennen:
+                    neu = self.modell.glooko_events(AMPULLE, allein, jetzt, self.dedupe, self.merge_fenster)
+                    for c in neu:
+                        _LOGGER.info("Glooko: Reservoirwechsel %s übernommen (%s)", c["start"], c["quelle"])
                 g["letzter_sync"] = iso(jetzt)
                 g["fehler"] = None
                 await self._speichern()
             await self._insulin_abgleich(jetzt, tz)
+            await self._tir_abgleich(jetzt, tz)
             await self._evidenz_sammeln(jetzt, tz)
         except GlookoFehler as e:
             _LOGGER.warning("Glooko-Abgleich fehlgeschlagen: %s", e)
@@ -232,6 +269,28 @@ class Verwaltung:
             m.z["insulin"] = info
 
         await self.aendern(setzen)
+
+    async def _tir_abgleich(self, jetzt: datetime, tz) -> None:
+        """CGM-Werte der letzten 14 Tage holen und Zeit in den Bereichen je Fenster berechnen."""
+        tage = max(TIR_FENSTER.values())
+        serien = await self._glooko.serien(jetzt - timedelta(days=tage, hours=3), jetzt + timedelta(days=1), CGM_SERIEN)
+        self._cgm = [w for w in cgm_werte(serien, tz) if w[0] <= jetzt]
+        tir = self._tir(self._cgm)
+
+        def setzen(m: Modell):
+            m.z["tir"] = tir
+
+        await self.aendern(setzen)
+
+    def _tir(self, werte: list[tuple[datetime, int]]) -> dict[str, Any]:
+        """Gleitende Fenster, die am letzten verfügbaren Wert enden (Glooko hinkt ~1,5 h hinterher)."""
+        if not werte:
+            return {"stand": None, "grenzen": list(self.tir_grenzen)}
+        bis = werte[-1][0]
+        out: dict[str, Any] = {"stand": iso(bis), "grenzen": list(self.tir_grenzen)}
+        for name, tage in TIR_FENSTER.items():
+            out[name] = tir_statistik(werte, bis - timedelta(days=tage), bis, self.tir_grenzen)
+        return out
 
     async def _evidenz_sammeln(self, jetzt: datetime, tz) -> None:
         for c in self.modell.offene_evidenz():

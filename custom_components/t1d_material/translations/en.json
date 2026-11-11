@@ -41,14 +41,21 @@
           "insulin_voll_u": "Insulin: full cartridge",
           "insulin_fuellen_u": "Insulin: tubing fill loss",
           "insulin_warnung_u": "Insulin: warning threshold",
-          "insulin_kanuele_u": "Insulin: cannula fill (per set change)"
+          "insulin_kanuele_u": "Insulin: cannula fill (per set change)",
+          "insulin_reservoir_u": "Insulin: priming after reservoir change without tubing",
+          "reservoir_erkennen": "Derive reservoir changes from Glooko (tubing fill without site change)",
+          "tir_sehr_tief": "Glucose: far below under",
+          "tir_tief": "Glucose: target range from",
+          "tir_hoch": "Glucose: target range up to",
+          "tir_sehr_hoch": "Glucose: far above over"
         }
       }
     },
     "error": {
       "invalid_auth": "Glooko login failed",
       "cannot_connect": "Cannot reach Glooko",
-      "glooko_unvollstaendig": "Enter e-mail and password or leave both empty"
+      "glooko_unvollstaendig": "Enter e-mail and password or leave both empty",
+      "tir_reihenfolge": "Glucose limits must ascend: far below < target from < target to < far above"
     }
   },
   "entity": {
@@ -97,6 +104,51 @@
       },
       "tagesverbrauch": {
         "name": "Daily usage"
+      },
+      "tir_24h_im_ziel": {
+        "name": "In range (24 h)"
+      },
+      "tir_24h_tief": {
+        "name": "Slightly below (24 h)"
+      },
+      "tir_24h_sehr_tief": {
+        "name": "Far below (24 h)"
+      },
+      "tir_24h_hoch": {
+        "name": "Slightly above (24 h)"
+      },
+      "tir_24h_sehr_hoch": {
+        "name": "Far above (24 h)"
+      },
+      "tir_7d_im_ziel": {
+        "name": "In range (7 days)"
+      },
+      "tir_7d_tief": {
+        "name": "Slightly below (7 days)"
+      },
+      "tir_7d_sehr_tief": {
+        "name": "Far below (7 days)"
+      },
+      "tir_7d_hoch": {
+        "name": "Slightly above (7 days)"
+      },
+      "tir_7d_sehr_hoch": {
+        "name": "Far above (7 days)"
+      },
+      "tir_14d_im_ziel": {
+        "name": "In range (14 days)"
+      },
+      "tir_14d_tief": {
+        "name": "Slightly below (14 days)"
+      },
+      "tir_14d_sehr_tief": {
+        "name": "Far below (14 days)"
+      },
+      "tir_14d_hoch": {
+        "name": "Slightly above (14 days)"
+      },
+      "tir_14d_sehr_hoch": {
+        "name": "Far above (14 days)"
       }
     },
     "number": {
@@ -372,6 +424,30 @@
         "insulin_kanuele_u": {
           "name": "Insulin: cannula fill",
           "description": "Insulin used to fill the cannula (per set change)"
+        },
+        "insulin_reservoir_u": {
+          "name": "Insulin: priming after reservoir change without tubing",
+          "description": "Insulin: priming after reservoir change without tubing"
+        },
+        "reservoir_erkennen": {
+          "name": "Derive reservoir changes from Glooko (tubing fill without site change)",
+          "description": "Derive reservoir changes from Glooko (tubing fill without site change)"
+        },
+        "tir_sehr_tief": {
+          "name": "Glucose: far below under",
+          "description": "Glucose: far below under"
+        },
+        "tir_tief": {
+          "name": "Glucose: target range from",
+          "description": "Glucose: target range from"
+        },
+        "tir_hoch": {
+          "name": "Glucose: target range up to",
+          "description": "Glucose: target range up to"
+        },
+        "tir_sehr_hoch": {
+          "name": "Glucose: far above over",
+          "description": "Glucose: far above over"
         }
       }
     },

@@ -18,6 +18,12 @@ from .const import (
     CONF_EVIDENZ_H,
     CONF_INSULIN_FUELLEN_U,
     CONF_INSULIN_KANUELE_U,
+    CONF_INSULIN_RESERVOIR_U,
+    CONF_RESERVOIR_ERKENNEN,
+    CONF_TIR_HOCH,
+    CONF_TIR_SEHR_HOCH,
+    CONF_TIR_SEHR_TIEF,
+    CONF_TIR_TIEF,
     CONF_INSULIN_VOLL_U,
     CONF_INSULIN_WARNUNG_U,
     CONF_INTERVALL_MIN,
@@ -103,6 +109,9 @@ class T1DOptionsFlow(OptionsFlow):
                 f := await _glooko_pruefen(self.hass, email, pw)
             ):
                 fehler["base"] = f
+            elif not (user_input[CONF_TIR_SEHR_TIEF] < user_input[CONF_TIR_TIEF]
+                      < user_input[CONF_TIR_HOCH] < user_input[CONF_TIR_SEHR_HOCH]):
+                fehler["base"] = "tir_reihenfolge"
             else:
                 user_input.setdefault(CONF_EMAIL, "")
                 user_input.setdefault(CONF_PASSWORD, "")
@@ -121,7 +130,11 @@ class T1DOptionsFlow(OptionsFlow):
         schema[vol.Required(CONF_INSULIN_VOLL_U, default=cfg[CONF_INSULIN_VOLL_U])] = _zahl(10, 1000, 1, "U")
         schema[vol.Required(CONF_INSULIN_FUELLEN_U, default=cfg[CONF_INSULIN_FUELLEN_U])] = _zahl(0, 100, 0.5, "U")
         schema[vol.Required(CONF_INSULIN_KANUELE_U, default=cfg[CONF_INSULIN_KANUELE_U])] = _zahl(0, 5, 0.1, "U")
+        schema[vol.Required(CONF_INSULIN_RESERVOIR_U, default=cfg[CONF_INSULIN_RESERVOIR_U])] = _zahl(0, 20, 0.1, "U")
         schema[vol.Required(CONF_INSULIN_WARNUNG_U, default=cfg[CONF_INSULIN_WARNUNG_U])] = _zahl(0, 200, 1, "U")
+        schema[vol.Required(CONF_RESERVOIR_ERKENNEN, default=cfg[CONF_RESERVOIR_ERKENNEN])] = sel.BooleanSelector()
+        for k in (CONF_TIR_SEHR_TIEF, CONF_TIR_TIEF, CONF_TIR_HOCH, CONF_TIR_SEHR_HOCH):
+            schema[vol.Required(k, default=cfg[k])] = _zahl(30, 400, 1, "mg/dL")
         schema[vol.Required(CONF_INTERVALL_MIN, default=cfg[CONF_INTERVALL_MIN])] = _zahl(10, 1440, 5, "min")
         schema[vol.Required(CONF_MERGE_H, default=cfg[CONF_MERGE_H])] = _zahl(0.25, 24, 0.25, "h")
         schema[vol.Required(CONF_DEDUPE_MIN, default=cfg[CONF_DEDUPE_MIN])] = _zahl(1, 240, 1, "min")

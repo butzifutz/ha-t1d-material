@@ -26,7 +26,12 @@ Je Gerät *Infusionsset*, *CGM-Sensor* (mit Tragezeit) und *Insulin* (Füllstand
 | Bestand | änderbar |
 | Wechsel jetzt | Button |
 
-Glooko: letzter Abruf, Verbindung.
+Gerät *Glooko*: letzter Abruf und die Zeit in den Glukose-Bereichen (Prozent der CGM-Werte) für gleitende
+Fenster von **24 h, 7 und 14 Tagen** – je *Im Zielbereich*, *Leicht darunter*, *Stark darunter*, *Leicht darüber*,
+*Stark darüber*. Standardgrenzen (internationaler Konsens, in den Optionen änderbar):
+stark darunter < 54 ≤ leicht darunter < 70 ≤ **Ziel ≤ 180** < leicht darüber ≤ 250 < stark darüber (mg/dl).
+Die Fenster enden am letzten Glooko-Wert. *Im Zielbereich* hat zusätzlich die Attribute Mittelwert, GMI,
+Variationskoeffizient, Anzahl Werte und Abdeckung.
 
 Benachrichtigungen baut man als Automation, z. B. Trigger „Restzeit unter 12 h“.
 
@@ -56,9 +61,13 @@ Wechsel-Ereignisse (CamAPS FX):
 | Glooko-Serie | Aktion in CamAPS | Bedeutung hier |
 |---|---|---|
 | `setSiteChange` | Kanüle füllen | Setwechsel (wird automatisch angelegt) |
-| `reservoirChange` | Schlauch füllen | **kein** Reservoirwechsel – nur Schlauchfüllung (kostet Insulin); zusammen mit `setSiteChange` = Setwechsel mit Schlauch |
+| `reservoirChange` + `setSiteChange` (±15 min) | Schlauch + Kanüle füllen | Setwechsel mit Schlauch (Schlauchfüllung) |
+| `reservoirChange` allein | Schlauch füllen (Stempel anfahren) | Reservoirwechsel ohne Schlauch – nur mit Option „Reservoirwechsel aus Glooko ableiten“ |
 | – | Rücklauf | liefert Glooko nicht |
 
-Reservoirwechsel und CGM-Wechsel werden deshalb nur in der App (oder per Service `wechsel`) erfasst.
+Glooko meldet keine Füllmengen. Die Deutung von `reservoirChange` allein beruht auf zwei Annahmen: Kanüle füllen wird
+nicht vergessen, und ein Schlauch wird praktisch nur zusammen mit dem Set gewechselt. Set + Reservoir gleichzeitig
+erkennt Glooko nicht (→ App). Gelöschte Glooko-Wechsel werden beim nächsten Abruf nicht neu angelegt.
+CGM-Wechsel werden nur in der App (oder per Service `wechsel`) erfasst.
 
-Insulin: `scheduledBasal` (enthält jedes Segment mehrfach → entdoppelt; Summe = Glookos `scheduledBasalsSum`) und `deliveredBolus`. Füllstand = Ampulleninhalt − je Schlauchfüllung (App-Auswahl „Schlauch gewechselt“ oder Glooko) − je Setwechsel das Kanülenfüllen (0,3 U) − Verbrauch.
+Insulin: `scheduledBasal` (enthält jedes Segment mehrfach → entdoppelt; Summe = Glookos `scheduledBasalsSum`) und `deliveredBolus`. Füllstand = Ampulleninhalt − Anfahren des Stempels beim Reservoirwechsel ohne Schlauch (1 U) − je Schlauchfüllung (12 U; App-Auswahl „Schlauch gewechselt“ oder Glooko) − je Setwechsel das Kanülenfüllen (0,3 U) − Verbrauch. Alle Mengen sind in den Optionen einstellbar.

@@ -306,9 +306,9 @@ def test_insulin_fuellstand_aus_glooko():
     # 1,5 h nach Datenstand: hochgerechnet mit 2 U/h
     s2 = m.status(AMPULLE, stand + 90 * M)
     assert s2["fuellstand_u"] == 105.0
-    # ohne Schlauchfüllen 12 U mehr
+    # ohne Schlauch: statt 12 U nur 1 U fürs Anfahren des Stempels
     m.bearbeiten(c["id"], {"schlauch_gewechselt": False}, stand)
-    assert m.status(AMPULLE, stand)["fuellstand_u"] == 120
+    assert m.status(AMPULLE, stand)["fuellstand_u"] == 119
     assert m.status(AMPULLE, stand)["zyklus"]["schlauch_gewechselt"] is False
 
 
@@ -346,14 +346,14 @@ def test_setzstelle_ohne_altersangabe_und_migration():
 
 def _insulin_modell():
     m = neues_modell()
-    m.insulin = InsulinConfig(160, 12, 20, 0.3)
-    c = m.wechsel(AMPULLE, T0, T0)  # Reservoir: nur per App, Standard ohne Schlauch
+    m.insulin = InsulinConfig(160, 12, 20, 0.3, 0.0)  # ohne Reservoir-Anfahren, damit die Zahlen klar bleiben
+    c = m.wechsel(AMPULLE, T0, T0)  # Reservoir per App, Standard ohne Schlauch
     m.z["insulin"] = {"zyklus_id": c["id"], "verbrauch_u": 0.0, "stand": (T0 + 100 * H).isoformat(),
                       "tagesverbrauch_u": 48.0}
     return m, c
 
 
-def test_glooko_schlauch_allein_ist_kein_reservoirwechsel():
+def test_glooko_schlauch_mit_setwechsel_kein_neues_reservoir():
     m, c = _insulin_modell()
     assert m.glooko_schlauch([T0 + 50 * H], T0 + 51 * H) == 1
     assert m.aktiv(AMPULLE)["id"] == c["id"]  # kein neuer Reservoir-Zyklus
@@ -413,3 +413,80 @@ def test_migration_schlauch_gefuellt():
     assert [f["zyklus_id"] for f in z["schlauch"]] == ["a"]  # Standard war „ja“
     assert "schlauch_gefuellt" not in z["zyklen"][1]
     assert m.ansicht(z["zyklen"][0])["schlauch_gewechselt"] is True
+
+
+# ------------------------------------------------------------------ v0.4: Reservoir aus Glooko, TIR
+from t1d_material.model import tir_statistik  # noqa: E402
+
+
+def test_reservoir_ohne_schlauch_kostet_anfahren():
+    m = neues_modell()
+    m.insulin = InsulinConfig(160, 12, 20, 0.3, 1.0)
+    c = m.wechsel(AMPULLE, T0, T0)
+    m.z["insulin"] = {"zyklus_id": c["id"], "verbrauch_u": 0.0, "stand": T0.isoformat(), "tagesverbrauch_u": 48.0}
+    s = m.status(AMPULLE, T0)
+    assert s["fuellstand_u"] == 159 and s["reservoir_fuellung_u"] == 1.0
+    m.bearbeiten(c["id"], {"schlauch_gewechselt": True}, T0)
+    s = m.status(AMPULLE, T0)
+    assert s["fuellstand_u"] == 148 and s["reservoir_fuellung_u"] == 0  # 12 U, nicht 13 U
+
+
+def test_glooko_reservoir_allein_fuehrt_mit_app_zusammen_und_raeumt_v03_auf():
+    m = neues_modell()
+    m.insulin = InsulinConfig(160, 12, 20, 0.3, 1.0)
+    m.bestand_setzen(AMPULLE, 5, T0)
+    c = m.wechsel(AMPULLE, T0, T0)  # App, ohne Chip
+    t = T0 + 3 * M  # Glooko „Schlauch füllen“ ohne Kanüle
+    m.z["schlauch"].append({"zeit": t.isoformat(), "quelle": "glooko", "zyklus_id": None})  # Altlast v0.3
+    m.z["insulin"] = {"zyklus_id": c["id"], "verbrauch_u": 0.0, "stand": t.isoformat(), "tagesverbrauch_u": 48.0}
+    assert m.glooko_schlauch([], t + H, reservoir=[t]) == 0
+    neu = m.glooko_events(AMPULLE, [t], t + H, DEDUPE, MERGE)
+    assert len(m.zyklen(AMPULLE)) == 1 and neu[0]["quelle"] == "zusammengefuehrt"
+    assert m.z["bestand"][AMPULLE] == 4  # nicht doppelt gebucht
+    s = m.status(AMPULLE, t)
+    assert s["zyklus"]["schlauch_gewechselt"] is False and s["fuellstand_u"] == 159
+
+
+def test_glooko_reservoir_ohne_app_wird_angelegt_und_bleibt_geloescht():
+    m = neues_modell()
+    m.bestand_setzen(AMPULLE, 5, T0)
+    m.wechsel(AMPULLE, T0, T0)
+    m.z["glooko"]["initialisiert"][AMPULLE] = True
+    t = T0 + 80 * H
+    neu = m.glooko_events(AMPULLE, [t], t + H, DEDUPE, MERGE)
+    assert neu[0]["quelle"] == "glooko" and m.aktiv(AMPULLE)["id"] == neu[0]["id"]
+    assert m.z["bestand"][AMPULLE] == 3
+    m.loeschen(neu[0]["id"], t + 2 * H)
+    assert m.z["bestand"][AMPULLE] == 4
+    assert m.glooko_events(AMPULLE, [t], t + 3 * H, DEDUPE, MERGE) == []
+    assert len(m.zyklen(AMPULLE)) == 1
+
+
+def test_glooko_reservoir_wird_zurueckgenommen_wenn_kanuele_nachkommt():
+    m = neues_modell()
+    m.bestand_setzen(AMPULLE, 5, T0)
+    m.wechsel(AMPULLE, T0, T0)
+    m.z["glooko"]["initialisiert"][AMPULLE] = True
+    t = T0 + 80 * H
+    m.glooko_events(AMPULLE, [t], t + H, DEDUPE, MERGE)
+    assert len(m.zyklen(AMPULLE)) == 2
+    # nächster Upload: Kanüle füllen 30 s später → war ein Setwechsel mit Schlauch
+    assert m.glooko_reservoir_zuruecknehmen([t], t + 2 * H) == 1
+    m.glooko_schlauch([t], t + 2 * H)
+    assert len(m.zyklen(AMPULLE)) == 1 and m.z["bestand"][AMPULLE] == 4
+    assert m.schlauch_zeiten() == [t]
+    # gemerkt wird nichts – ein späteres echtes Reservoir-Event zur selben Zeit gibt es nicht, aber auch keine Sperre
+    assert m.z["glooko"].get("geloescht", []) == []
+
+
+def test_tir_statistik_bereiche_und_grenzen():
+    werte = [(T0 + i * 5 * M, v) for i, v in enumerate([53, 54, 69, 70, 180, 181, 250, 251, 120, 120])]
+    s = tir_statistik(werte, T0 - M, T0 + 2 * H, (54, 70, 180, 250))
+    assert s["sehr_tief"] == 10.0 and s["tief"] == 20.0 and s["im_ziel"] == 40.0
+    assert s["hoch"] == 20.0 and s["sehr_hoch"] == 10.0
+    assert s["anzahl"] == 10 and s["mittelwert"] == round(sum(v for _, v in werte) / 10)
+    assert s["gmi"] == round(3.31 + 0.02392 * sum(v for _, v in werte) / 10, 1)
+    assert 0 < s["abdeckung_prozent"] < 50  # 10 Werte in 2 h statt 24+
+    assert tir_statistik(werte, T0 + 10 * H, T0 + 11 * H, (54, 70, 180, 250)) is None
+    # eigener Zielbereich
+    assert tir_statistik(werte, T0 - M, T0 + 2 * H, (54, 70, 140, 250))["im_ziel"] == 30.0

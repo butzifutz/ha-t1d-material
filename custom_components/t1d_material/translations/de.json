@@ -41,14 +41,21 @@
           "insulin_voll_u": "Insulin: Inhalt volle Ampulle",
           "insulin_fuellen_u": "Insulin: Verlust beim Schlauchfüllen",
           "insulin_warnung_u": "Insulin: Warnschwelle",
-          "insulin_kanuele_u": "Insulin: Kanüle füllen (je Setwechsel)"
+          "insulin_kanuele_u": "Insulin: Kanüle füllen (je Setwechsel)",
+          "insulin_reservoir_u": "Insulin: Füllen nach Reservoirwechsel ohne Schlauch",
+          "reservoir_erkennen": "Reservoirwechsel aus Glooko ableiten (Schlauch füllen ohne Setwechsel)",
+          "tir_sehr_tief": "Glukose: stark darunter unter",
+          "tir_tief": "Glukose: Zielbereich ab",
+          "tir_hoch": "Glukose: Zielbereich bis",
+          "tir_sehr_hoch": "Glukose: stark darüber über"
         }
       }
     },
     "error": {
       "invalid_auth": "Glooko-Anmeldung fehlgeschlagen",
       "cannot_connect": "Glooko nicht erreichbar",
-      "glooko_unvollstaendig": "E-Mail und Passwort angeben oder beide leer lassen"
+      "glooko_unvollstaendig": "E-Mail und Passwort angeben oder beide leer lassen",
+      "tir_reihenfolge": "Glukose-Grenzen müssen aufsteigen: stark darunter < Ziel ab < Ziel bis < stark darüber"
     }
   },
   "entity": {
@@ -97,6 +104,51 @@
       },
       "tagesverbrauch": {
         "name": "Tagesverbrauch"
+      },
+      "tir_24h_im_ziel": {
+        "name": "Im Zielbereich (24 h)"
+      },
+      "tir_24h_tief": {
+        "name": "Leicht darunter (24 h)"
+      },
+      "tir_24h_sehr_tief": {
+        "name": "Stark darunter (24 h)"
+      },
+      "tir_24h_hoch": {
+        "name": "Leicht darüber (24 h)"
+      },
+      "tir_24h_sehr_hoch": {
+        "name": "Stark darüber (24 h)"
+      },
+      "tir_7d_im_ziel": {
+        "name": "Im Zielbereich (7 Tage)"
+      },
+      "tir_7d_tief": {
+        "name": "Leicht darunter (7 Tage)"
+      },
+      "tir_7d_sehr_tief": {
+        "name": "Stark darunter (7 Tage)"
+      },
+      "tir_7d_hoch": {
+        "name": "Leicht darüber (7 Tage)"
+      },
+      "tir_7d_sehr_hoch": {
+        "name": "Stark darüber (7 Tage)"
+      },
+      "tir_14d_im_ziel": {
+        "name": "Im Zielbereich (14 Tage)"
+      },
+      "tir_14d_tief": {
+        "name": "Leicht darunter (14 Tage)"
+      },
+      "tir_14d_sehr_tief": {
+        "name": "Stark darunter (14 Tage)"
+      },
+      "tir_14d_hoch": {
+        "name": "Leicht darüber (14 Tage)"
+      },
+      "tir_14d_sehr_hoch": {
+        "name": "Stark darüber (14 Tage)"
       }
     },
     "number": {
@@ -372,6 +424,30 @@
         "insulin_kanuele_u": {
           "name": "Insulin: Kanüle füllen",
           "description": "Insulin: Kanüle füllen (je Setwechsel)"
+        },
+        "insulin_reservoir_u": {
+          "name": "Insulin: Füllen nach Reservoirwechsel ohne Schlauch",
+          "description": "Insulin: Füllen nach Reservoirwechsel ohne Schlauch"
+        },
+        "reservoir_erkennen": {
+          "name": "Reservoirwechsel aus Glooko ableiten (Schlauch füllen ohne Setwechsel)",
+          "description": "Reservoirwechsel aus Glooko ableiten (Schlauch füllen ohne Setwechsel)"
+        },
+        "tir_sehr_tief": {
+          "name": "Glukose: stark darunter unter",
+          "description": "Glukose: stark darunter unter"
+        },
+        "tir_tief": {
+          "name": "Glukose: Zielbereich ab",
+          "description": "Glukose: Zielbereich ab"
+        },
+        "tir_hoch": {
+          "name": "Glukose: Zielbereich bis",
+          "description": "Glukose: Zielbereich bis"
+        },
+        "tir_sehr_hoch": {
+          "name": "Glukose: stark darüber über",
+          "description": "Glukose: stark darüber über"
         }
       }
     },

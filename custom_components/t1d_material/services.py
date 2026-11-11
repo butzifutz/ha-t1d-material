@@ -17,6 +17,12 @@ from .const import (
     CGM,
     CONF_INSULIN_FUELLEN_U,
     CONF_INSULIN_KANUELE_U,
+    CONF_INSULIN_RESERVOIR_U,
+    CONF_RESERVOIR_ERKENNEN,
+    CONF_TIR_HOCH,
+    CONF_TIR_SEHR_HOCH,
+    CONF_TIR_SEHR_TIEF,
+    CONF_TIR_TIEF,
     CONF_INSULIN_VOLL_U,
     CONF_INSULIN_WARNUNG_U,
     CONF_PACKUNG,
@@ -92,7 +98,12 @@ EINSTELLUNGEN = vol.Schema({
     vol.Optional(CONF_INSULIN_FUELLEN_U): vol.All(ZAHL, vol.Range(min=0, max=100)),
     vol.Optional(CONF_INSULIN_WARNUNG_U): vol.All(ZAHL, vol.Range(min=0, max=200)),
     vol.Optional(CONF_INSULIN_KANUELE_U): vol.All(ZAHL, vol.Range(min=0, max=5)),
+    vol.Optional(CONF_INSULIN_RESERVOIR_U): vol.All(ZAHL, vol.Range(min=0, max=20)),
+    vol.Optional(CONF_RESERVOIR_ERKENNEN): cv.boolean,
+    **{vol.Optional(k): vol.All(ZAHL, vol.Range(min=30, max=400))
+       for k in (CONF_TIR_SEHR_TIEF, CONF_TIR_TIEF, CONF_TIR_HOCH, CONF_TIR_SEHR_HOCH)},
 })
+TIR_GRENZEN = (CONF_TIR_SEHR_TIEF, CONF_TIR_TIEF, CONF_TIR_HOCH, CONF_TIR_SEHR_HOCH)
 DATEN = vol.Schema({vol.Optional("historie", default=50): vol.All(vol.Coerce(int), vol.Range(min=0, max=10000))})
 
 
@@ -190,6 +201,9 @@ def registrieren(hass: HomeAssistant) -> None:
         """Optionen ändern (wie in HA unter „Konfigurieren“); wirkt ohne Neuladen."""
         v = verwaltung(hass)
         neu = {**v.entry.options, **call.data}
+        g = [float({**v.cfg, **neu}[k]) for k in TIR_GRENZEN]
+        if not g[0] < g[1] < g[2] < g[3]:
+            raise ServiceValidationError("TIR-Grenzen müssen aufsteigen: sehr tief < tief < hoch < sehr hoch")
         hass.config_entries.async_update_entry(v.entry, options=neu)
         v.config_uebernehmen()  # sofort, nicht erst wenn der Update-Listener läuft
         return {"config": _config(v)}
@@ -218,6 +232,7 @@ def registrieren(hass: HomeAssistant) -> None:
             },
             "config": _config(v),
             "glooko": {"aktiv": v.glooko_aktiv, **m.z["glooko"]},
+            "tir": m.z.get("tir") or {},
         }
 
     reg = hass.services.async_register
@@ -244,6 +259,9 @@ def _config(v) -> dict[str, Any]:
         "insulin_fuellen_u": ic.fuellen_u,
         "insulin_warnung_u": ic.warnung_u,
         "insulin_kanuele_u": ic.kanuele_u,
+        "insulin_reservoir_u": ic.reservoir_u,
+        "reservoir_erkennen": v.reservoir_erkennen,
+        "tir_grenzen": list(v.tir_grenzen),
     }
 
 

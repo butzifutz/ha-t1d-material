@@ -11,8 +11,10 @@ Der Zustand ist ein JSON-fähiges dict, damit er direkt im HA-Store liegt:
       "request_ids": {request_id: zyklus_id | None},
       "glooko": {"letzter_sync": iso|None, "fehler": str|None, "initialisiert": {typ: bool}},
       "insulin": {"zyklus_id", "verbrauch_u", "stand": iso, "tagesverbrauch_u"},  # aus Glooko
-      "schlauch": [ {zeit, quelle, zyklus_id}, ... ]   # Schlauchfüllungen (App-Chip oder Glooko)
+      "schlauch": [ {zeit, quelle, zyklus_id}, ... ],  # Schlauchfüllungen (App-Chip oder Glooko)
+      "tir": {"stand": iso, "grenzen": [...], "24h": {...}, "7d": {...}, "14d": {...}}  # aus Glooko-CGM
     }
+    Gelöschte Glooko-Wechsel stehen in glooko.geloescht ({typ, zeit}), damit der Abgleich sie nicht neu anlegt.
 """
 
 from __future__ import annotations
@@ -47,6 +49,7 @@ from .const import (
 MAX_REQUEST_IDS = 1000
 SCHLAUCH_FENSTER = timedelta(minutes=SCHLAUCH_FENSTER_MIN)
 SCHLAUCH_AUFBEWAHREN = timedelta(days=120)
+GELOESCHT_AUFBEWAHREN = timedelta(days=120)
 
 # Felder, die beim Setzen eines Materials erfasst werden
 START_FELDER = ("setzstelle", "seite", "charge", "seriennummer", "produkt", "foto", "schlauch_gewechselt")
@@ -78,6 +81,7 @@ class InsulinConfig:
     fuellen_u: float = 12.0    # Verlust beim Schlauchfüllen
     warnung_u: float = 20.0    # ab hier "bald wechseln" (CamAPS-Warnung)
     kanuele_u: float = 0.3     # Kanüle füllen bei jedem Setwechsel
+    reservoir_u: float = 1.0   # Reservoirwechsel ohne Schlauch: Stempel anfahren
 
     @property
     def nutzbar_u(self) -> float:
@@ -109,6 +113,7 @@ def leerer_zustand(jetzt: datetime) -> dict[str, Any]:
         "glooko": {"letzter_sync": None, "fehler": None, "initialisiert": {}},
         "insulin": {},
         "schlauch": [],
+        "tir": {},
     }
 
 
@@ -117,6 +122,9 @@ def migrieren(z: dict[str, Any]) -> bool:
     geaendert = False
     if "insulin" not in z:
         z["insulin"] = {}
+        geaendert = True
+    if "tir" not in z:
+        z["tir"] = {}
         geaendert = True
     if "schlauch" not in z:
         # v0.2: Feld schlauch_gefuellt am Reservoir-Zyklus (Standard: ja) → Liste der Schlauchfüllungen
@@ -278,7 +286,10 @@ class Modell:
             ab = parse(c["start"]) - SCHLAUCH_FENSTER
             n_schlauch = sum(1 for t in self.schlauch_zeiten() if ab <= t <= jetzt)
             n_kanuele = sum(1 for s in self.zyklen(SET) if ab <= parse(s["start"]) <= jetzt)
-            start_u = ic.voll_u - n_schlauch * ic.fuellen_u - n_kanuele * ic.kanuele_u
+            # Ohne Schlauch beim Einsetzen kostet das Anfahren des Stempels etwas (mit Schlauch steckt es im Füllen)
+            n_reservoir = 0 if self.mit_schlauch(c) else 1
+            start_u = (ic.voll_u - n_reservoir * ic.reservoir_u
+                       - n_schlauch * ic.fuellen_u - n_kanuele * ic.kanuele_u)
             if info.get("zyklus_id") == c["id"]:
                 verbrauch = float(info.get("verbrauch_u") or 0.0)
                 stand = info.get("stand")
@@ -294,6 +305,7 @@ class Modell:
                 "fuellstand_u": round(fuell, 1),
                 "schlauch_fuellungen": n_schlauch,
                 "kanuele_fuellungen": n_kanuele,
+                "reservoir_fuellung_u": n_reservoir * ic.reservoir_u,
                 "fuellstand_prozent": prozent,
                 "insulin_stand": stand,
                 "restzeit_h": round(rest_h, 1),
@@ -492,9 +504,17 @@ class Modell:
             c["evidenz_status"] = "offen"
         return c
 
-    def loeschen(self, zyklus_id: str, jetzt: datetime) -> None:
-        """Zyklus löschen (z. B. Fehleingabe). Bestand wird zurückgebucht."""
+    def loeschen(self, zyklus_id: str, jetzt: datetime, merken: bool = True) -> None:
+        """Zyklus löschen (z. B. Fehleingabe). Bestand wird zurückgebucht.
+
+        Stammt der Zyklus (auch) aus Glooko, wird die Zeit gemerkt, damit der nächste Abgleich ihn nicht neu anlegt.
+        """
         c = self.zyklus(zyklus_id)
+        if merken and c["quelle"] in (QUELLE_GLOOKO, QUELLE_ZUSAMMEN):
+            g = self.z["glooko"].setdefault("geloescht", [])
+            g.append({"typ": c["typ"], "zeit": c["start"]})
+            grenze = jetzt - GELOESCHT_AUFBEWAHREN
+            g[:] = [x for x in g if parse(x["zeit"]) >= grenze]
         typ = c["typ"]
         vorher = self._vorgaenger(typ, parse(c["start"]))
         if vorher is not None and vorher["ende"] == c["start"]:
@@ -544,8 +564,11 @@ class Modell:
             # Erster Abruf: nur das jüngste Event (laufendes Material), keine Historie
             zeiten = zeiten[-1:]
             init[typ] = True
+        geloescht = [parse(x["zeit"]) for x in self.z["glooko"].get("geloescht", []) if x["typ"] == typ]
         geaendert = []
         for t in zeiten:
+            if any(abs(t - g) <= max(dedupe, SCHLAUCH_FENSTER) for g in geloescht):
+                continue  # vom Nutzer gelöscht
             treffer = [
                 c for c in self.zyklen(typ) if abs(parse(c["start"]) - t) <= max(merge_fenster, dedupe)
             ]
@@ -570,8 +593,23 @@ class Modell:
             geaendert.append(c)
         return geaendert
 
-    def glooko_schlauch(self, zeiten: list[datetime], jetzt: datetime) -> int:
-        """„Schlauch füllen“ aus Glooko übernehmen. Gibt die Zahl neuer Füllungen zurück."""
+    def glooko_schlauch(
+        self, zeiten: list[datetime], jetzt: datetime, reservoir: Iterable[datetime] = ()
+    ) -> int:
+        """„Schlauch füllen“ aus Glooko übernehmen. Gibt die Zahl neuer Füllungen zurück.
+
+        `zeiten`: Füllungen mit Setwechsel daneben (= Schlauch gewechselt).
+        `reservoir`: Füllungen ohne Setwechsel (= Reservoirwechsel ohne Schlauch). Bis v0.3 wurden auch sie als
+        Schlauchfüllung gespeichert – solche Einträge werden hier entfernt.
+        """
+        for r in reservoir:
+            for f in list(self.z["schlauch"]):
+                if abs(parse(f["zeit"]) - r) > SCHLAUCH_FENSTER:
+                    continue
+                if f["quelle"] == QUELLE_GLOOKO:
+                    self.z["schlauch"].remove(f)
+                elif f["quelle"] == QUELLE_ZUSAMMEN:
+                    f["quelle"] = QUELLE_APP  # Chip in der App gesetzt → bleibt
         neu = 0
         for t in dedupe_zeiten(zeiten, SCHLAUCH_FENSTER):
             nahe = self._schlauch_nahe(t, auch_aus=True)
@@ -585,6 +623,17 @@ class Modell:
         grenze = jetzt - SCHLAUCH_AUFBEWAHREN
         self.z["schlauch"] = [f for f in self.z["schlauch"] if parse(f["zeit"]) >= grenze]
         return neu
+
+    def glooko_reservoir_zuruecknehmen(self, zeiten_mit_set: Iterable[datetime], jetzt: datetime) -> int:
+        """Reservoir-Zyklen, die nur aus Glooko stammen, wieder entfernen, wenn sich die Füllung doch als
+        Setwechsel mit Schlauch herausstellt (Kanüle füllen kam erst mit einem späteren Upload)."""
+        n = 0
+        for t in zeiten_mit_set:
+            for c in self.zyklen(AMPULLE):
+                if c["quelle"] == QUELLE_GLOOKO and abs(parse(c["start"]) - t) <= SCHLAUCH_FENSTER:
+                    self.loeschen(c["id"], jetzt, merken=False)
+                    n += 1
+        return n
 
     def offene_evidenz(self) -> list[dict]:
         return [
@@ -647,3 +696,41 @@ def insulin_summe(
             u += rate * (b - a).total_seconds() / 3600
     u += sum(menge for t, menge in boli if von <= t < bis)
     return u
+
+
+def tir_statistik(
+    werte: list[tuple[datetime, int]], von: datetime, bis: datetime, grenzen: tuple[float, float, float, float]
+) -> dict[str, Any] | None:
+    """Anteile in den Glukose-Bereichen (Prozent), Mittelwert, GMI, Variationskoeffizient.
+
+    grenzen = (sehr_tief, tief, hoch, sehr_hoch) in mg/dl, z. B. (54, 70, 180, 250):
+    sehr_tief < 54 ≤ tief < 70 ≤ im_ziel ≤ 180 < hoch ≤ 250 < sehr_hoch
+    """
+    sehr_tief, tief, hoch, sehr_hoch = grenzen
+    v = [w for t, w in werte if von < t <= bis]
+    if not v:
+        return None
+    n = len(v)
+    zaehler = {"sehr_tief": 0, "tief": 0, "im_ziel": 0, "hoch": 0, "sehr_hoch": 0}
+    for w in v:
+        if w < sehr_tief:
+            zaehler["sehr_tief"] += 1
+        elif w < tief:
+            zaehler["tief"] += 1
+        elif w <= hoch:
+            zaehler["im_ziel"] += 1
+        elif w <= sehr_hoch:
+            zaehler["hoch"] += 1
+        else:
+            zaehler["sehr_hoch"] += 1
+    mittel = sum(v) / n
+    sd = (sum((w - mittel) ** 2 for w in v) / n) ** 0.5
+    erwartet = (bis - von).total_seconds() / 300  # CGM alle 5 min
+    return {
+        **{k: round(z / n * 100, 1) for k, z in zaehler.items()},
+        "anzahl": n,
+        "abdeckung_prozent": round(min(100.0, n / erwartet * 100), 1) if erwartet else None,
+        "mittelwert": round(mittel),
+        "gmi": round(3.31 + 0.02392 * mittel, 1),
+        "cv_prozent": round(sd / mittel * 100, 1) if mittel else None,
+    }
