@@ -39,7 +39,6 @@ CONF_PASSWORD = "glooko_password"
 CONF_INTERVALL_MIN = "glooko_intervall_min"
 CONF_MERGE_H = "merge_fenster_h"
 CONF_DEDUPE_MIN = "dedupe_min"
-CONF_EVIDENZ_H = "evidenz_h"
 CONF_TRAGEZEIT_D = "tragezeit_d"
 CONF_TOLERANZ_H = "toleranz_h"
 CONF_PACKUNG = "packung"
@@ -59,7 +58,6 @@ DEFAULTS_GLOBAL = {
     CONF_INTERVALL_MIN: 60,
     CONF_MERGE_H: 2.0,
     CONF_DEDUPE_MIN: 30,
-    CONF_EVIDENZ_H: 24,
     CONF_INSULIN_VOLL_U: 160.0,     # volle Ampulle
     CONF_INSULIN_FUELLEN_U: 12.0,   # Schlauch füllen
     CONF_INSULIN_WARNUNG_U: 20.0,   # CamAPS FX warnt hier
@@ -147,3 +145,20 @@ LUECKE_UNTER_1 = "Unter 1 Stunde"
 LUECKE_1_BIS_3 = "Zwischen 1 und 3 Stunden"
 LUECKE_UEBER_3 = "Über 3 Stunden"
 LUECKE_KEINE = "Keine Angabe"
+
+# Unzuverlässige Zeiträume eines CGM-Sensors (kurze, häufige Lücken und rauschende Werte).
+# Eine Störung ist eine Lücke (> 10 min ohne Wert; > 60 min heißt Ausfall) oder ein Sprung
+# (|w(i+1) − 2·w(i) + w(i−1)| ≥ 30 mg/dl bei Nachbarwerten höchstens 11 min auseinander).
+# Störungen mit höchstens 30 min Abstand bilden eine Gruppe; ab 4 Störungen ist sie eine unzuverlässige Spanne.
+STOERUNG_LUECKE_MIN = 10
+STOERUNG_AUSFALL_MIN = 60
+STOERUNG_SPRUNG_MG_DL = 30
+STOERUNG_NACHBAR_MAX_S = 660
+SPANNE_ABSTAND_MIN = 30
+SPANNE_MIN_STOERUNGEN = 4
+
+# Evidenz-Fenster vor Sensorende: mindestens 12 h, höchstens 72 h; beginnt eine unzuverlässige Spanne früher,
+# beginnt das Fenster 1 h vor ihr.
+EVIDENZ_MIN_H = 12
+EVIDENZ_MAX_H = 72
+EVIDENZ_VORLAUF_H = 1

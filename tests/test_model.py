@@ -505,3 +505,97 @@ def test_tir_statistik_vergisst_exponentiell():
     assert abs(s["im_ziel"] - 20) < 0.1
     s = tir_statistik([(bis - 14 * tag - M, 100), (bis, 300)], bis, (54, 70, 180, 250))
     assert s["im_ziel"] == 0 and s["sehr_hoch"] == 100
+
+
+# ------------------------------------------------------------------ v0.5: unzuverlässige Spannen, Evidenz-Fenster
+from t1d_material.model import evidenz_fenster_start, parse, stoerungen, unzuverlaessige_spannen  # noqa: E402
+
+
+def _reihe(start, werte, takt=5):
+    """Synthetische CGM-Reihe; None = kein Wert (Lücke)."""
+    return [(start + i * takt * M, v) for i, v in enumerate(werte) if v is not None]
+
+
+def test_ruhige_reihe_hat_keine_stoerungen():
+    w = _reihe(T0, [120 + (i % 3) for i in range(100)])
+    assert stoerungen(w) == [] and unzuverlaessige_spannen(w) == []
+
+
+def test_einzelne_luecken_ergeben_keine_spanne():
+    # drei kurze Lücken weit auseinander
+    v = [120] * 200
+    for i in (20, 21, 100, 101, 180, 181):
+        v[i] = None
+    w = _reihe(T0, v)
+    assert [e["art"] for e in stoerungen(w)] == ["luecke"] * 3
+    assert unzuverlaessige_spannen(w) == []
+
+
+def test_gehaeufte_luecken_und_spruenge_bilden_spanne():
+    v = [120] * 120
+    for i in (30, 31, 36, 37, 42, 43):  # drei Lücken à 15 min dicht beieinander
+        v[i] = None
+    v[45] = 170  # Sprung: Zickzack
+    v[60] = 60
+    w = _reihe(T0, v)
+    arten = [e["art"] for e in stoerungen(w)]
+    assert arten.count("luecke") == 3 and arten.count("sprung") >= 2
+    sp = unzuverlaessige_spannen(w)
+    assert len(sp) == 1
+    s = sp[0]
+    assert s["luecken"] == 3 and s["spruenge"] >= 2 and s["ausfaelle"] == 0
+    assert parse(s["von"]) == T0 + 29 * 5 * M  # letzter Wert vor der ersten Lücke
+    assert s["dauer_min"] == (parse(s["bis"]) - parse(s["von"])).total_seconds() / 60
+
+
+def test_ausfall_zaehlt_als_stoerung():
+    v = [120] * 100
+    for i in range(30, 45):  # 80 min ohne Wert
+        v[i] = None
+    for i in (50, 51, 56, 57, 62, 63):  # drei Lücken à 15 min
+        v[i] = None
+    w = _reihe(T0, v)
+    sp = unzuverlaessige_spannen(w)
+    assert len(sp) == 1 and sp[0]["ausfaelle"] == 1 and sp[0]["luecken"] == 3
+
+
+def test_stoerungen_weiter_als_30_min_auseinander_trennen():
+    v = [120] * 200
+    for i in (20, 21, 28, 29, 36, 37, 100, 101, 108, 109, 116, 117):  # je 3 Lücken, Gruppen weit auseinander
+        v[i] = None
+    assert unzuverlaessige_spannen(_reihe(T0, v)) == []  # je Gruppe nur 3 Störungen
+
+
+def test_evidenz_fenster():
+    ende = T0 + 10 * 24 * H
+    assert evidenz_fenster_start(ende, []) == ende - 12 * H
+    spanne = lambda von, bis: {"von": von.isoformat(), "bis": bis.isoformat()}  # noqa: E731
+    # Spanne beginnt 20 h vor Ende → Fenster 21 h
+    assert evidenz_fenster_start(ende, [spanne(ende - 20 * H, ende - 18 * H)]) == ende - 21 * H
+    # Spanne kurz vor Ende ändert nichts am Mindestfenster
+    assert evidenz_fenster_start(ende, [spanne(ende - 3 * H, ende - H)]) == ende - 12 * H
+    # sehr frühe Spanne, die noch in die letzten 72 h reicht → höchstens 72 h
+    assert evidenz_fenster_start(ende, [spanne(ende - 100 * H, ende - 70 * H)]) == ende - 72 * H
+    # Spanne komplett älter als 72 h zählt nicht
+    assert evidenz_fenster_start(ende, [spanne(ende - 100 * H, ende - 80 * H)]) == ende - 12 * H
+
+
+def test_zeitumstellung_trennt_doppelte_stunde():
+    pytest.importorskip("aiohttp")
+    from t1d_material.glooko import cgm_werte
+
+    # Umstellung 25.10.2026 03:00 MESZ → 02:00 MEZ; Ortszeit 02:00–02:59 kommt zweimal
+    def p(h, mi, y):
+        return {"timestamp": f"2026-10-25T{h:02d}:{mi:02d}:00.000Z", "y": y}
+
+    vorher = [p(1, m, 150 - m // 5) for m in range(30, 60, 5)]           # 150 … 145, fällt langsam
+    erste = [p(2, m, 144 - 2 * (m // 5)) for m in range(0, 60, 5)]       # Sommerzeit: 144 … 122
+    zweite = [p(2, m, 120 - 2 * (m // 5)) for m in range(1, 60, 5)]      # Winterzeit: 120 … 98
+    nachher = [p(3, m, 96 - 2 * (m // 5)) for m in range(1, 30, 5)]
+    w = cgm_werte({"cgmNormal": vorher + erste + zweite + nachher}, TZ)
+    assert len(w) == 6 + 12 + 12 + 6
+    zeiten = [t for t, _ in w]
+    assert zeiten == sorted(zeiten)
+    assert all(5 * M - M <= b - a <= 5 * M + M for a, b in zip(zeiten, zeiten[1:]))  # durchgehend 5-min-Takt
+    assert [v for _, v in w] == [v["y"] for v in vorher + erste + zweite + nachher]
+    assert stoerungen(w) == []

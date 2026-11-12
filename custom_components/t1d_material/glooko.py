@@ -109,7 +109,7 @@ class GlookoClient:
             self.patient = None
             return await self._get(pfad_und_query, nochmal=False)
         if r.status != 200:
-            raise GlookoFehler(f"Glooko HTTP {r.status}")
+            raise GlookoFehler(f"Glooko HTTP {r.status} ({pfad_und_query.split('?')[0]})")
         return await r.json(content_type=None)
 
     async def serien(self, start: datetime, ende: datetime, serien: list[str]) -> dict[str, list]:
@@ -134,23 +134,56 @@ class GlookoClient:
         return d.get("devices") or []
 
 
-def glooko_zeit(ts: str, tz: tzinfo) -> datetime:
-    """'2026-01-15T08:30:00.000Z' (eigentlich Ortszeit) → aware datetime in tz."""
+def _fest(t: datetime) -> datetime:
+    """Aware datetime → feste UTC-Abweichung. Vergleiche und Differenzen rechnen dann immer in echter Zeit,
+    auch in der doppelten Stunde der Zeitumstellung (bei gleicher ZoneInfo ignoriert Python sonst ``fold``)."""
+    return t.astimezone(timezone(t.utcoffset()))
+
+
+def _mehrdeutig(naiv: datetime, tz: tzinfo) -> bool:
+    """Liegt die Ortszeit in der doppelten Stunde (Umstellung auf Winterzeit)?"""
+    return naiv.replace(tzinfo=tz, fold=0).utcoffset() != naiv.replace(tzinfo=tz, fold=1).utcoffset()
+
+
+def glooko_zeit(ts: str, tz: tzinfo, fold: int = 0) -> datetime:
+    """'2026-01-15T08:30:00.000Z' (eigentlich Ortszeit) → aware datetime mit fester Abweichung."""
     naiv = datetime.fromisoformat(ts.replace("Z", "")).replace(tzinfo=None)
-    return naiv.replace(tzinfo=tz)
+    return _fest(naiv.replace(tzinfo=tz, fold=fold))
 
 
 CGM_SERIEN = ["cgmHigh", "cgmNormal", "cgmLow"]
 
 
 def cgm_werte(serien: dict[str, list], tz: tzinfo) -> list[tuple[datetime, int]]:
-    out = []
+    """CGM-Werte zeitlich sortiert.
+
+    In der doppelten Stunde der Zeitumstellung liefert Glooko zwei verschränkte Messreihen mit derselben Ortszeit.
+    Sie werden nach Wertverlauf getrennt: die erste Reihe schließt an den letzten Wert davor an (Sommerzeit),
+    die zweite läuft in die Werte danach (Winterzeit).
+    """
+    naiv = []
     for name in CGM_SERIEN:
         for p in serien.get(name, []):
             ts, wert = p.get("timestamp"), p.get("y")
             if ts and wert is not None:
-                out.append((glooko_zeit(ts, tz), int(wert)))
-    out.sort()
+                naiv.append((datetime.fromisoformat(ts.replace("Z", "")).replace(tzinfo=None), int(wert)))
+    naiv.sort()
+    out = []
+    letzte = {0: None, 1: None}  # letzter Wert je Reihe in der doppelten Stunde
+    for t, w in naiv:
+        if not _mehrdeutig(t, tz):
+            letzte = {0: None, 1: None}
+            out.append((_fest(t.replace(tzinfo=tz)), w))
+            continue
+        if letzte[0] is None:
+            letzte[0] = out[-1][1] if out else w
+        if letzte[1] is None:
+            fold = 0 if abs(w - letzte[0]) <= 15 else 1
+        else:
+            fold = 0 if abs(w - letzte[0]) <= abs(w - letzte[1]) else 1
+        letzte[fold] = w
+        out.append((_fest(t.replace(tzinfo=tz, fold=fold)), w))
+    out.sort(key=lambda x: x[0])
     return out
 
 

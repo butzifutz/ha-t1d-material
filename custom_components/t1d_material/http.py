@@ -22,7 +22,7 @@ MAX_FOTO = 15 * 1024 * 1024
 EXPORT_SPALTEN = [
     "id", "typ", "start", "ende", "quelle", "setzstelle", "seite", "produkt", "charge", "schlauch_gewechselt",
     "seriennummer", "endgrund", "problemart", "problem_zeit", "problem_text", "ruecksendung",
-    "groesste_luecke_min", "luecke_stufe", "evidenz_status", "foto",
+    "groesste_luecke_min", "luecke_stufe", "unzuverlaessig_min", "evidenz_status", "foto",
 ]
 
 
@@ -112,6 +112,28 @@ class ExportView(HomeAssistantView):
         )
 
 
+def _dauer(minuten: float) -> str:
+    h, m = divmod(int(round(minuten)), 60)
+    return f"{h} h {m:02d} min" if h else f"{m} min"
+
+
+def spannen_zeilen(spannen: list[dict]) -> list[str]:
+    """Unzuverlässige Zeiträume als Textzeilen (Ortszeit)."""
+    if not spannen:
+        return ["Unzuverlässige Zeiträume:  keine"]
+    gesamt = sum(s["dauer_min"] for s in spannen)
+    zeilen = [f"Unzuverlässige Zeiträume:  {len(spannen)}, zusammen {_dauer(gesamt)}"]
+    for s in spannen:
+        a, b = dt_util.as_local(parse(s["von"])), dt_util.as_local(parse(s["bis"]))
+        bis = b.strftime("%H:%M") if a.date() == b.date() else b.strftime("%d.%m. %H:%M")
+        teile = [f"{s['luecken']} Lücken" if s["luecken"] != 1 else "1 Lücke"]
+        if s["ausfaelle"]:
+            teile.append(f"{s['ausfaelle']} Ausfall" + ("" if s["ausfaelle"] == 1 else "e") + " > 1 h")
+        teile.append(f"{s['spruenge']} Sprünge" if s["spruenge"] != 1 else "1 Sprung")
+        zeilen.append(f"  {a.strftime('%d.%m. %H:%M')}–{bis} ({_dauer(s['dauer_min'])}): {', '.join(teile)}")
+    return zeilen
+
+
 def reklamation_text(c: dict) -> str:
     """Antworten in der Reihenfolge des Dexcom-Formulars."""
     def j(b):
@@ -142,6 +164,13 @@ def reklamation_text(c: dict) -> str:
         + (f" ({c['groesste_luecke_min']:.0f} min)" if c.get("groesste_luecke_min") is not None else ""),
         "Setzstelle mit Alkoholtupfer gereinigt: Ja",
         "",
+    ]
+    if "unzuverlaessig" in c:
+        zeilen += spannen_zeilen(c["unzuverlaessig"]) + [
+            "  (Störung = Lücke > 10 min oder Sprung ≥ 30 mg/dl; ab 4 Störungen mit ≤ 30 min Abstand)",
+            "",
+        ]
+    zeilen += [
         f"Gesetzt:  {d(c.get('start'))}",
         f"Entfernt: {d(c.get('ende')) if c.get('ende') else 'läuft noch'}",
     ]
@@ -169,6 +198,9 @@ class ReklamationView(HomeAssistantView):
                     z.write(foto, "verpackung.jpg")
                 ev = v.evidenz_laden(zyklus_id)
                 if ev:
+                    z.writestr("unzuverlaessig.json", json.dumps(
+                        {"fenster_von": ev.get("fenster_von"), "spannen": ev.get("unzuverlaessig", []),
+                         "spruenge": ev.get("spruenge", [])}, ensure_ascii=False, indent=2))
                     z.writestr(
                         "cgm_letzte_werte.csv",
                         "zeit;mg_dl\n" + "".join(f"{w['zeit']};{w['mg_dl']}\n" for w in ev["werte"]),

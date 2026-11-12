@@ -15,7 +15,6 @@ from .const import (
     CGM,
     CONF_DEDUPE_MIN,
     CONF_EMAIL,
-    CONF_EVIDENZ_H,
     CONF_INSULIN_FUELLEN_U,
     CONF_INSULIN_KANUELE_U,
     CONF_INSULIN_RESERVOIR_U,
@@ -138,6 +137,5 @@ class T1DOptionsFlow(OptionsFlow):
         schema[vol.Required(CONF_INTERVALL_MIN, default=cfg[CONF_INTERVALL_MIN])] = _zahl(10, 1440, 5, "min")
         schema[vol.Required(CONF_MERGE_H, default=cfg[CONF_MERGE_H])] = _zahl(0.25, 24, 0.25, "h")
         schema[vol.Required(CONF_DEDUPE_MIN, default=cfg[CONF_DEDUPE_MIN])] = _zahl(1, 240, 1, "min")
-        schema[vol.Required(CONF_EVIDENZ_H, default=cfg[CONF_EVIDENZ_H])] = _zahl(1, 72, 1, "h")
         schema.update(_glooko_schema(cfg))
         return self.async_show_form(step_id="init", data_schema=vol.Schema(schema), errors=fehler)

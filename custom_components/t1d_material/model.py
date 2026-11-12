@@ -25,6 +25,15 @@ from datetime import datetime, timedelta
 from typing import Any, Iterable
 
 from .const import (
+    EVIDENZ_MAX_H,
+    EVIDENZ_MIN_H,
+    EVIDENZ_VORLAUF_H,
+    SPANNE_ABSTAND_MIN,
+    SPANNE_MIN_STOERUNGEN,
+    STOERUNG_AUSFALL_MIN,
+    STOERUNG_LUECKE_MIN,
+    STOERUNG_NACHBAR_MAX_S,
+    STOERUNG_SPRUNG_MG_DL,
     AMPULLE,
     CGM,
     ENDGRUND_REGULAER,
@@ -126,6 +135,11 @@ def migrieren(z: dict[str, Any]) -> bool:
     if "tir" not in z:
         z["tir"] = {}
         geaendert = True
+    for c in z["zyklen"]:
+        # v0.5: Evidenz mit unzuverlässigen Spannen und angepasstem Fenster neu erzeugen
+        if c["typ"] == CGM and c.get("evidenz_status") == "fertig" and "unzuverlaessig" not in c:
+            c["evidenz_status"] = "offen"
+            geaendert = True
     if "schlauch" not in z:
         # v0.2: Feld schlauch_gefuellt am Reservoir-Zyklus (Standard: ja) → Liste der Schlauchfüllungen
         z["schlauch"] = []
@@ -672,6 +686,58 @@ def groesste_luecke_min(
     luecken.append((ende - t[-1]).total_seconds() / 60)
     groesste = max(luecken)
     return round(groesste, 1) if groesste > normal_min else 0.0
+
+
+def stoerungen(werte: list[tuple[datetime, int]]) -> list[dict[str, Any]]:
+    """Einzelne Störungen der CGM-Reihe: Lücken/Ausfälle (zwischen zwei Werten) und Sprünge (um einen Wert ±5 min)."""
+    w = sorted(werte, key=lambda x: x[0])
+    out: list[dict[str, Any]] = []
+    for (a, _), (b, _) in zip(w, w[1:]):
+        minuten = (b - a).total_seconds() / 60
+        if minuten > STOERUNG_LUECKE_MIN:
+            out.append({"von": a, "bis": b, "art": "ausfall" if minuten > STOERUNG_AUSFALL_MIN else "luecke"})
+    fuenf = timedelta(minutes=5)
+    for i in range(1, len(w) - 1):
+        if (w[i + 1][0] - w[i - 1][0]).total_seconds() <= STOERUNG_NACHBAR_MAX_S:
+            if abs(w[i + 1][1] - 2 * w[i][1] + w[i - 1][1]) >= STOERUNG_SPRUNG_MG_DL:
+                out.append({"von": w[i][0] - fuenf, "bis": w[i][0] + fuenf, "art": "sprung", "zeit": w[i][0]})
+    out.sort(key=lambda e: e["von"])
+    return out
+
+
+def unzuverlaessige_spannen(werte: list[tuple[datetime, int]]) -> list[dict[str, Any]]:
+    """Störungen mit höchstens SPANNE_ABSTAND_MIN Abstand bündeln; Gruppen ab SPANNE_MIN_STOERUNGEN Störungen."""
+    abstand = timedelta(minutes=SPANNE_ABSTAND_MIN)
+    gruppen: list[list[dict]] = []
+    bis = None
+    for e in stoerungen(werte):
+        if not gruppen or e["von"] - bis > abstand:
+            gruppen.append([])
+            bis = e["bis"]
+        gruppen[-1].append(e)
+        bis = max(bis, e["bis"])
+    out = []
+    for g in gruppen:
+        if len(g) < SPANNE_MIN_STOERUNGEN:
+            continue
+        von, ende = g[0]["von"], max(e["bis"] for e in g)
+        out.append({
+            "von": iso(von), "bis": iso(ende), "dauer_min": round((ende - von).total_seconds() / 60),
+            "luecken": sum(e["art"] == "luecke" for e in g),
+            "ausfaelle": sum(e["art"] == "ausfall" for e in g),
+            "spruenge": sum(e["art"] == "sprung" for e in g),
+        })
+    return out
+
+
+def evidenz_fenster_start(ende: datetime, spannen: list[dict[str, Any]]) -> datetime:
+    """Mindestens EVIDENZ_MIN_H vor Sensorende; früher, wenn eine Spanne der letzten EVIDENZ_MAX_H früher beginnt."""
+    frueheste = ende - timedelta(hours=EVIDENZ_MAX_H)
+    start = ende - timedelta(hours=EVIDENZ_MIN_H)
+    for s in spannen:
+        if parse(s["bis"]) >= frueheste:
+            start = min(start, parse(s["von"]) - timedelta(hours=EVIDENZ_VORLAUF_H))
+    return max(start, frueheste)
 
 
 def luecke_stufe(minuten: float | None) -> str:

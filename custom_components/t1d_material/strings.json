@@ -35,7 +35,6 @@
           "glooko_intervall_min": "Glooko poll interval",
           "merge_fenster_h": "Merge window app/Glooko",
           "dedupe_min": "Collapse Glooko duplicates within",
-          "evidenz_h": "CGM evidence: hours before sensor end",
           "glooko_email": "Glooko e-mail (empty = no Glooko)",
           "glooko_password": "Glooko password",
           "insulin_voll_u": "Insulin: full cartridge",

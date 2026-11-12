@@ -35,7 +35,6 @@
           "glooko_intervall_min": "Glooko-Abrufintervall",
           "merge_fenster_h": "Fenster zum Zusammenführen App/Glooko",
           "dedupe_min": "Glooko-Duplikate zusammenfassen innerhalb",
-          "evidenz_h": "CGM-Evidenz: Stunden vor Sensorende",
           "glooko_email": "Glooko-E-Mail (leer = ohne Glooko)",
           "glooko_password": "Glooko-Passwort",
           "insulin_voll_u": "Insulin: Inhalt volle Ampulle",

@@ -20,7 +20,6 @@ from .const import (
     CGM,
     CONF_DEDUPE_MIN,
     CONF_EMAIL,
-    CONF_EVIDENZ_H,
     CONF_INSULIN_FUELLEN_U,
     CONF_INSULIN_KANUELE_U,
     CONF_INSULIN_RESERVOIR_U,
@@ -73,6 +72,9 @@ from .model import (
     migrieren,
     parse,
     tir_statistik,
+    evidenz_fenster_start,
+    stoerungen,
+    unzuverlaessige_spannen,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -308,12 +310,16 @@ class Verwaltung:
 
     async def evidenz_speichern(self, c: dict, werte: list[tuple[datetime, int]]) -> None:
         start, ende = parse(c["start"]), parse(c["ende"])
-        fenster = timedelta(hours=float(self.cfg[CONF_EVIDENZ_H]))
-        luecke = groesste_luecke_min([t for t, _ in werte], start, ende)
-        letzte = [{"zeit": iso(t), "mg_dl": v} for t, v in werte if t >= ende - fenster]
+        sitzung = [(t, v) for t, v in werte if start <= t <= ende]
+        luecke = groesste_luecke_min([t for t, _ in sitzung], start, ende)
+        spannen = unzuverlaessige_spannen(sitzung)
+        von = evidenz_fenster_start(ende, spannen)
+        letzte = [{"zeit": iso(t), "mg_dl": v} for t, v in sitzung if t >= von]
+        spruenge = [iso(e["zeit"]) for e in stoerungen(sitzung) if e["art"] == "sprung" and e["zeit"] >= von]
         datei = self.verzeichnis / "evidenz" / f"{c['id']}.json"
         inhalt = {"zyklus_id": c["id"], "start": c["start"], "ende": c["ende"],
-                  "fenster_h": fenster.total_seconds() / 3600, "werte": letzte}
+                  "fenster_von": iso(von), "fenster_h": round((ende - von).total_seconds() / 3600, 2),
+                  "unzuverlaessig": spannen, "spruenge": spruenge, "werte": letzte}
         await self.hass.async_add_executor_job(
             datei.write_text, json.dumps(inhalt, ensure_ascii=False), "utf-8"
         )
@@ -322,6 +328,8 @@ class Verwaltung:
             c["groesste_luecke_min"] = luecke
             c["luecke_stufe"] = luecke_stufe(luecke)
             c["evidenz_werte"] = len(letzte)
+            c["unzuverlaessig"] = spannen
+            c["unzuverlaessig_min"] = sum(x["dauer_min"] for x in spannen)
             c["evidenz_status"] = "fertig" if werte else "keine_daten"
 
         await self.aendern(setzen)

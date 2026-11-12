@@ -33,6 +33,24 @@ Standardgrenzen (internationaler Konsens, in den Optionen änderbar):
 stark darunter < 54 ≤ leicht darunter < 70 ≤ **Ziel ≤ 180** < leicht darüber ≤ 250 < stark darüber (mg/dl).
 Gerechnet wird ab dem letzten Glooko-Wert.
 
+## CGM-Evidenz bei Sensorende
+
+Nach jedem Sensorende holt die Integration die CGM-Werte der ganzen Laufzeit aus Glooko und bestimmt:
+
+- **Längste Zeit ohne Werte** (ab dem ersten Wert, wie im Dexcom-Formular abgefragt).
+- **Unzuverlässige Zeiträume** – in der Praxis sind die Lücken oft kurz, aber häufig, und die Werte dazwischen
+  rauschen. Gezählt werden einzelne Störungen:
+  - *Lücke*: mehr als 10 min ohne Wert (mehr als 60 min heißt *Ausfall*),
+  - *Sprung*: |w(i+1) − 2·w(i) + w(i−1)| ≥ 30 mg/dl (Zickzack), Nachbarwerte höchstens 11 min auseinander.
+
+  Störungen mit höchstens 30 min Abstand bilden eine Gruppe; ab 4 Störungen ist sie ein unzuverlässiger Zeitraum
+  (von der ersten bis zur letzten Störung).
+- **Evidenz-Fenster** für Kurve und CSV: mindestens 12 h vor Sensorende; beginnt ein unzuverlässiger Zeitraum
+  der letzten 72 h früher, beginnt das Fenster 1 h vor ihm (höchstens 72 h).
+
+Die Zeiträume stehen im Zyklus (`unzuverlaessig`, `unzuverlaessig_min`), im Reklamationstext und als
+`unzuverlaessig.json` im Reklamationspaket.
+
 Benachrichtigungen baut man als Automation, z. B. Trigger „Restzeit unter 12 h“.
 
 ## Services
@@ -45,7 +63,7 @@ Benachrichtigungen baut man als Automation, z. B. Trigger „Restzeit unter 12 h
 |---|---|
 | `POST/GET /api/t1d_material/foto/{zyklus_id}` | Verpackungsfoto (JPEG) |
 | `GET /api/t1d_material/evidenz/{zyklus_id}` | CGM-Werte vor Sensorende |
-| `GET /api/t1d_material/reklamation/{zyklus_id}` | ZIP mit Angaben fürs Dexcom-Formular, Foto, CGM-CSV |
+| `GET /api/t1d_material/reklamation/{zyklus_id}` | ZIP mit Angaben fürs Dexcom-Formular, Foto, CGM-CSV, unzuverlässige Zeiträume |
 | `GET /api/t1d_material/export.csv` | Alle Zyklen |
 
 ## Daten
