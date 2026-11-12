@@ -105,50 +105,8 @@
       "tagesverbrauch": {
         "name": "Daily usage"
       },
-      "tir_24h_im_ziel": {
-        "name": "In range (24 h)"
-      },
-      "tir_24h_tief": {
-        "name": "Slightly below (24 h)"
-      },
-      "tir_24h_sehr_tief": {
-        "name": "Far below (24 h)"
-      },
-      "tir_24h_hoch": {
-        "name": "Slightly above (24 h)"
-      },
-      "tir_24h_sehr_hoch": {
-        "name": "Far above (24 h)"
-      },
-      "tir_7d_im_ziel": {
-        "name": "In range (7 days)"
-      },
-      "tir_7d_tief": {
-        "name": "Slightly below (7 days)"
-      },
-      "tir_7d_sehr_tief": {
-        "name": "Far below (7 days)"
-      },
-      "tir_7d_hoch": {
-        "name": "Slightly above (7 days)"
-      },
-      "tir_7d_sehr_hoch": {
-        "name": "Far above (7 days)"
-      },
-      "tir_14d_im_ziel": {
-        "name": "In range (14 days)"
-      },
-      "tir_14d_tief": {
-        "name": "Slightly below (14 days)"
-      },
-      "tir_14d_sehr_tief": {
-        "name": "Far below (14 days)"
-      },
-      "tir_14d_hoch": {
-        "name": "Slightly above (14 days)"
-      },
-      "tir_14d_sehr_hoch": {
-        "name": "Far above (14 days)"
+      "tir": {
+        "name": "Time in range"
       }
     },
     "number": {

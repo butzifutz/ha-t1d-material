@@ -105,50 +105,8 @@
       "tagesverbrauch": {
         "name": "Tagesverbrauch"
       },
-      "tir_24h_im_ziel": {
-        "name": "Im Zielbereich (24 h)"
-      },
-      "tir_24h_tief": {
-        "name": "Leicht darunter (24 h)"
-      },
-      "tir_24h_sehr_tief": {
-        "name": "Stark darunter (24 h)"
-      },
-      "tir_24h_hoch": {
-        "name": "Leicht darüber (24 h)"
-      },
-      "tir_24h_sehr_hoch": {
-        "name": "Stark darüber (24 h)"
-      },
-      "tir_7d_im_ziel": {
-        "name": "Im Zielbereich (7 Tage)"
-      },
-      "tir_7d_tief": {
-        "name": "Leicht darunter (7 Tage)"
-      },
-      "tir_7d_sehr_tief": {
-        "name": "Stark darunter (7 Tage)"
-      },
-      "tir_7d_hoch": {
-        "name": "Leicht darüber (7 Tage)"
-      },
-      "tir_7d_sehr_hoch": {
-        "name": "Stark darüber (7 Tage)"
-      },
-      "tir_14d_im_ziel": {
-        "name": "Im Zielbereich (14 Tage)"
-      },
-      "tir_14d_tief": {
-        "name": "Leicht darunter (14 Tage)"
-      },
-      "tir_14d_sehr_tief": {
-        "name": "Stark darunter (14 Tage)"
-      },
-      "tir_14d_hoch": {
-        "name": "Leicht darüber (14 Tage)"
-      },
-      "tir_14d_sehr_hoch": {
-        "name": "Stark darüber (14 Tage)"
+      "tir": {
+        "name": "Zeit im Zielbereich"
       }
     },
     "number": {

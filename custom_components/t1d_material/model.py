@@ -12,7 +12,7 @@ Der Zustand ist ein JSON-fähiges dict, damit er direkt im HA-Store liegt:
       "glooko": {"letzter_sync": iso|None, "fehler": str|None, "initialisiert": {typ: bool}},
       "insulin": {"zyklus_id", "verbrauch_u", "stand": iso, "tagesverbrauch_u"},  # aus Glooko
       "schlauch": [ {zeit, quelle, zyklus_id}, ... ],  # Schlauchfüllungen (App-Chip oder Glooko)
-      "tir": {"stand": iso, "grenzen": [...], "24h": {...}, "7d": {...}, "14d": {...}}  # aus Glooko-CGM
+      "tir": {"stand": iso, "grenzen": [...], "im_ziel": %, "tief": %, ...}  # aus Glooko-CGM, gewichtet
     }
     Gelöschte Glooko-Wechsel stehen in glooko.geloescht ({typ, zeit}), damit der Abgleich sie nicht neu anlegt.
 """
@@ -699,38 +699,40 @@ def insulin_summe(
 
 
 def tir_statistik(
-    werte: list[tuple[datetime, int]], von: datetime, bis: datetime, grenzen: tuple[float, float, float, float]
+    werte: list[tuple[datetime, int]],
+    bis: datetime,
+    grenzen: tuple[float, float, float, float],
+    halbwertszeit: timedelta = timedelta(days=7),
+    schnitt: timedelta = timedelta(days=14),
 ) -> dict[str, Any] | None:
-    """Anteile in den Glukose-Bereichen (Prozent), Mittelwert, GMI, Variationskoeffizient.
+    """Anteile in den Glukose-Bereichen (Prozent), exponentiell gewichtet.
 
+    Gewicht eines Werts = 0,5 ** (Alter / Halbwertszeit), Alter gemessen ab ``bis``;
+    Werte älter als ``schnitt`` (oder nach ``bis``) zählen nicht.
     grenzen = (sehr_tief, tief, hoch, sehr_hoch) in mg/dl, z. B. (54, 70, 180, 250):
     sehr_tief < 54 ≤ tief < 70 ≤ im_ziel ≤ 180 < hoch ≤ 250 < sehr_hoch
     """
     sehr_tief, tief, hoch, sehr_hoch = grenzen
-    v = [w for t, w in werte if von < t <= bis]
-    if not v:
-        return None
-    n = len(v)
-    zaehler = {"sehr_tief": 0, "tief": 0, "im_ziel": 0, "hoch": 0, "sehr_hoch": 0}
-    for w in v:
+    hwz = halbwertszeit.total_seconds()
+    summe = {"sehr_tief": 0.0, "tief": 0.0, "im_ziel": 0.0, "hoch": 0.0, "sehr_hoch": 0.0}
+    gesamt = 0.0
+    for t, w in werte:
+        alter = (bis - t).total_seconds()
+        if alter < 0 or alter > schnitt.total_seconds():
+            continue
+        g = 0.5 ** (alter / hwz)
+        gesamt += g
         if w < sehr_tief:
-            zaehler["sehr_tief"] += 1
+            summe["sehr_tief"] += g
         elif w < tief:
-            zaehler["tief"] += 1
+            summe["tief"] += g
         elif w <= hoch:
-            zaehler["im_ziel"] += 1
+            summe["im_ziel"] += g
         elif w <= sehr_hoch:
-            zaehler["hoch"] += 1
+            summe["hoch"] += g
         else:
-            zaehler["sehr_hoch"] += 1
-    mittel = sum(v) / n
-    sd = (sum((w - mittel) ** 2 for w in v) / n) ** 0.5
-    erwartet = (bis - von).total_seconds() / 300  # CGM alle 5 min
-    return {
-        **{k: round(z / n * 100, 1) for k, z in zaehler.items()},
-        "anzahl": n,
-        "abdeckung_prozent": round(min(100.0, n / erwartet * 100), 1) if erwartet else None,
-        "mittelwert": round(mittel),
-        "gmi": round(3.31 + 0.02392 * mittel, 1),
-        "cv_prozent": round(sd / mittel * 100, 1) if mittel else None,
-    }
+            summe["sehr_hoch"] += g
+    if not gesamt:
+        return None
+    return {k: round(v / gesamt * 100, 1) for k, v in summe.items()}
+

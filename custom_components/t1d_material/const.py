@@ -73,9 +73,9 @@ DEFAULTS_GLOBAL = {
     CONF_TIR_SEHR_HOCH: 250,
 }
 
-# Gleitende Zeitfenster für die Zeit im Zielbereich
-TIR_FENSTER = {"24h": 1, "7d": 7, "14d": 14}
-TIR_KATEGORIEN = ("im_ziel", "tief", "sehr_tief", "hoch", "sehr_hoch")
+# Zeit im Zielbereich: exponentiell gewichtet (Halbwertszeit 7 Tage), Werte älter als 14 Tage zählen nicht
+TIR_HALBWERTSZEIT_TAGE = 7
+TIR_SCHNITT_TAGE = 14
 
 
 # Standard-Packungsgrößen (in den Optionen änderbar).

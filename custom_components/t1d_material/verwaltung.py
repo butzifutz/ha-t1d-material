@@ -48,7 +48,8 @@ from .const import (
     SCHLAUCH_FENSTER_MIN,
     SET,
     STORAGE_VERSION,
-    TIR_FENSTER,
+    TIR_HALBWERTSZEIT_TAGE,
+    TIR_SCHNITT_TAGE,
     TYPEN,
 )
 from .glooko import (
@@ -271,9 +272,10 @@ class Verwaltung:
         await self.aendern(setzen)
 
     async def _tir_abgleich(self, jetzt: datetime, tz) -> None:
-        """CGM-Werte der letzten 14 Tage holen und Zeit in den Bereichen je Fenster berechnen."""
-        tage = max(TIR_FENSTER.values())
-        serien = await self._glooko.serien(jetzt - timedelta(days=tage, hours=3), jetzt + timedelta(days=1), CGM_SERIEN)
+        """CGM-Werte der letzten 14 Tage holen und die gewichtete Zeit in den Bereichen berechnen."""
+        serien = await self._glooko.serien(
+            jetzt - timedelta(days=TIR_SCHNITT_TAGE, hours=3), jetzt + timedelta(days=1), CGM_SERIEN
+        )
         self._cgm = [w for w in cgm_werte(serien, tz) if w[0] <= jetzt]
         tir = self._tir(self._cgm)
 
@@ -283,14 +285,15 @@ class Verwaltung:
         await self.aendern(setzen)
 
     def _tir(self, werte: list[tuple[datetime, int]]) -> dict[str, Any]:
-        """Gleitende Fenster, die am letzten verfügbaren Wert enden (Glooko hinkt ~1,5 h hinterher)."""
+        """Gewichtet ab dem letzten verfügbaren Wert (Glooko hinkt ~1,5 h hinterher)."""
         if not werte:
             return {"stand": None, "grenzen": list(self.tir_grenzen)}
         bis = werte[-1][0]
-        out: dict[str, Any] = {"stand": iso(bis), "grenzen": list(self.tir_grenzen)}
-        for name, tage in TIR_FENSTER.items():
-            out[name] = tir_statistik(werte, bis - timedelta(days=tage), bis, self.tir_grenzen)
-        return out
+        anteile = tir_statistik(
+            werte, bis, self.tir_grenzen,
+            timedelta(days=TIR_HALBWERTSZEIT_TAGE), timedelta(days=TIR_SCHNITT_TAGE),
+        )
+        return {"stand": iso(bis), "grenzen": list(self.tir_grenzen), **(anteile or {})}
 
     async def _evidenz_sammeln(self, jetzt: datetime, tz) -> None:
         for c in self.modell.offene_evidenz():

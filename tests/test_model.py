@@ -480,13 +480,28 @@ def test_glooko_reservoir_wird_zurueckgenommen_wenn_kanuele_nachkommt():
 
 
 def test_tir_statistik_bereiche_und_grenzen():
-    werte = [(T0 + i * 5 * M, v) for i, v in enumerate([53, 54, 69, 70, 180, 181, 250, 251, 120, 120])]
-    s = tir_statistik(werte, T0 - M, T0 + 2 * H, (54, 70, 180, 250))
-    assert s["sehr_tief"] == 10.0 and s["tief"] == 20.0 and s["im_ziel"] == 40.0
-    assert s["hoch"] == 20.0 and s["sehr_hoch"] == 10.0
-    assert s["anzahl"] == 10 and s["mittelwert"] == round(sum(v for _, v in werte) / 10)
-    assert s["gmi"] == round(3.31 + 0.02392 * sum(v for _, v in werte) / 10, 1)
-    assert 0 < s["abdeckung_prozent"] < 50  # 10 Werte in 2 h statt 24+
-    assert tir_statistik(werte, T0 + 10 * H, T0 + 11 * H, (54, 70, 180, 250)) is None
+    # alle Werte gleich alt (≈ gleiches Gewicht): Anteile wie gezählt
+    werte = [(T0 + i * M, v) for i, v in enumerate([53, 54, 69, 70, 180, 181, 250, 251, 120, 120])]
+    bis = T0 + 9 * M
+    s = tir_statistik(werte, bis, (54, 70, 180, 250))
+    assert set(s) == {"sehr_tief", "tief", "im_ziel", "hoch", "sehr_hoch"}
+    assert abs(s["sehr_tief"] - 10) < 0.1 and abs(s["tief"] - 20) < 0.1 and abs(s["im_ziel"] - 40) < 0.1
+    assert abs(s["hoch"] - 20) < 0.1 and abs(s["sehr_hoch"] - 10) < 0.1
+    assert abs(sum(s.values()) - 100) < 0.5
+    assert tir_statistik(werte, T0 + 15 * 24 * H, (54, 70, 180, 250)) is None  # alles älter als 14 Tage
+    assert tir_statistik(werte, T0 - H, (54, 70, 180, 250)) is None  # Werte nach „bis“ zählen nicht
     # eigener Zielbereich
-    assert tir_statistik(werte, T0 - M, T0 + 2 * H, (54, 70, 140, 250))["im_ziel"] == 30.0
+    assert abs(tir_statistik(werte, bis, (54, 70, 140, 250))["im_ziel"] - 30) < 0.1
+
+
+def test_tir_statistik_vergisst_exponentiell():
+    tag = 24 * H
+    bis = T0 + 14 * tag
+    # vor 7 Tagen 100 (im Ziel), jetzt 300 (stark darüber): Gewicht 0,5 zu 1
+    s = tir_statistik([(bis - 7 * tag, 100), (bis, 300)], bis, (54, 70, 180, 250))
+    assert abs(s["im_ziel"] - 100 / 3) < 0.1 and abs(s["sehr_hoch"] - 200 / 3) < 0.1
+    # genau 14 Tage alt zählt noch (Gewicht 0,25), älter nicht
+    s = tir_statistik([(bis - 14 * tag, 100), (bis, 300)], bis, (54, 70, 180, 250))
+    assert abs(s["im_ziel"] - 20) < 0.1
+    s = tir_statistik([(bis - 14 * tag - M, 100), (bis, 300)], bis, (54, 70, 180, 250))
+    assert s["im_ziel"] == 0 and s["sehr_hoch"] == 100

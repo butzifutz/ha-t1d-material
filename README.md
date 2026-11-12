@@ -26,12 +26,12 @@ Je Gerät *Infusionsset*, *CGM-Sensor* (mit Tragezeit) und *Insulin* (Füllstand
 | Bestand | änderbar |
 | Wechsel jetzt | Button |
 
-Gerät *Glooko*: letzter Abruf und die Zeit in den Glukose-Bereichen (Prozent der CGM-Werte) für gleitende
-Fenster von **24 h, 7 und 14 Tagen** – je *Im Zielbereich*, *Leicht darunter*, *Stark darunter*, *Leicht darüber*,
-*Stark darüber*. Standardgrenzen (internationaler Konsens, in den Optionen änderbar):
+Gerät *Glooko*: letzter Abruf und *Zeit im Zielbereich* (Prozent der CGM-Werte über die letzten **14 Tage**,
+exponentiell gewichtet: Halbwertszeit 7 Tage, ältere Werte zählen weniger, Werte über 14 Tage gar nicht). Die übrigen
+Bereiche stehen als Attribute daran: `stark_darunter`, `leicht_darunter`, `leicht_darueber`, `stark_darueber`.
+Standardgrenzen (internationaler Konsens, in den Optionen änderbar):
 stark darunter < 54 ≤ leicht darunter < 70 ≤ **Ziel ≤ 180** < leicht darüber ≤ 250 < stark darüber (mg/dl).
-Die Fenster enden am letzten Glooko-Wert. *Im Zielbereich* hat zusätzlich die Attribute Mittelwert, GMI,
-Variationskoeffizient, Anzahl Werte und Abdeckung.
+Gerechnet wird ab dem letzten Glooko-Wert.
 
 Benachrichtigungen baut man als Automation, z. B. Trigger „Restzeit unter 12 h“.
 

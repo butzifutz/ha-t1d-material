@@ -24,8 +24,6 @@ from .const import (
     STATUS_KEIN,
     STATUS_TOLERANZ,
     STATUS_UEBERFAELLIG,
-    TIR_FENSTER,
-    TIR_KATEGORIEN,
     TYPEN,
 )
 from .entity import T1DEntity
@@ -117,7 +115,7 @@ async def async_setup_entry(hass: HomeAssistant, entry, add: AddConfigEntryEntit
     ]
     if v.glooko_aktiv:
         ents.append(GlookoSyncSensor(v))
-        ents += [TirSensor(v, f, k) for f in TIR_FENSTER for k in TIR_KATEGORIEN]
+        ents.append(TirSensor(v))
     add(ents)
 
 
@@ -156,31 +154,28 @@ class GlookoSyncSensor(T1DEntity, SensorEntity):
 
 
 class TirSensor(T1DEntity, SensorEntity):
-    """Anteil der CGM-Werte in einem Glukose-Bereich über ein gleitendes Fenster (24 h / 7 d / 14 d)."""
+    """Zeit im Zielbereich (%), exponentiell gewichtet über 14 Tage; die übrigen Bereiche als Attribute."""
 
     _attr_native_unit_of_measurement = PERCENTAGE
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_suggested_display_precision = 0
+    _attr_icon = "mdi:bullseye-arrow"
 
-    def __init__(self, v, fenster: str, kategorie: str):
-        super().__init__(v, None, f"tir_{fenster}_{kategorie}")
-        self.fenster = fenster
-        self.kategorie = kategorie
-        self._attr_icon = "mdi:bullseye-arrow" if kategorie == "im_ziel" else "mdi:chart-bell-curve"
-
-    def _werte(self) -> dict | None:
-        return (self.v.modell.z.get("tir") or {}).get(self.fenster)
+    def __init__(self, v):
+        super().__init__(v, None, "tir")
 
     @property
     def native_value(self):
-        w = self._werte()
-        return w.get(self.kategorie) if w else None
+        return (self.v.modell.z.get("tir") or {}).get("im_ziel")
 
     @property
     def extra_state_attributes(self):
         tir = self.v.modell.z.get("tir") or {}
-        w = self._werte() or {}
-        attr = {"datenstand": tir.get("stand"), "grenzen_mg_dl": tir.get("grenzen")}
-        if self.kategorie == "im_ziel":
-            attr |= {k: w.get(k) for k in ("mittelwert", "gmi", "cv_prozent", "anzahl", "abdeckung_prozent")}
-        return attr
+        return {
+            "stark_darunter": tir.get("sehr_tief"),
+            "leicht_darunter": tir.get("tief"),
+            "leicht_darueber": tir.get("hoch"),
+            "stark_darueber": tir.get("sehr_hoch"),
+            "datenstand": tir.get("stand"),
+            "grenzen_mg_dl": tir.get("grenzen"),
+        }
