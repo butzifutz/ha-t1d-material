@@ -17,6 +17,7 @@ from t1d_material.const import (
     STATUS_UEBERFAELLIG,
 )
 from t1d_material.model import (
+    evidenz_bereit,
     Modell,
     ModellFehler,
     TypConfig,
@@ -564,6 +565,20 @@ def test_stoerungen_weiter_als_30_min_auseinander_trennen():
     for i in (20, 21, 28, 29, 36, 37, 100, 101, 108, 109, 116, 117):  # je 3 Lücken, Gruppen weit auseinander
         v[i] = None
     assert unzuverlaessige_spannen(_reihe(T0, v)) == []  # je Gruppe nur 3 Störungen
+
+
+def test_evidenz_bereit():
+    tz = ZoneInfo("Europe/Berlin")
+    ende = datetime(2026, 1, 10, 7, 11, tzinfo=tz)
+    jetzt = ende + timedelta(hours=3)
+    h48 = timedelta(hours=48)
+    # alter Sensor endete lange vor dem Eintrag, Glooko hat noch nichts danach → warten
+    assert not evidenz_bereit(ende, ende - timedelta(minutes=33), jetzt, h48)
+    assert not evidenz_bereit(ende, None, jetzt, h48)
+    # erster Wert des neuen Sensors nach dem Wechsel → sofort
+    assert evidenz_bereit(ende, ende + timedelta(minutes=40), jetzt, h48)
+    # Rückfall nach 48 h
+    assert evidenz_bereit(ende, None, ende + h48, h48)
 
 
 def test_evidenz_fenster():

@@ -730,6 +730,12 @@ def unzuverlaessige_spannen(werte: list[tuple[datetime, int]]) -> list[dict[str,
     return out
 
 
+def evidenz_bereit(ende: datetime, letzter_wert: datetime | None, jetzt: datetime, aufgeben: timedelta) -> bool:
+    """Evidenz erzeugen, sobald Glooko einen Wert nach dem Sensorende hat (alles bis zum Wechsel ist dann
+    hochgeladen, egal wann der alte Sensor aufgehört hat) – spätestens nach `aufgeben`."""
+    return (letzter_wert is not None and letzter_wert > ende) or jetzt - ende >= aufgeben
+
+
 def evidenz_fenster_start(ende: datetime, spannen: list[dict[str, Any]]) -> datetime:
     """Mindestens EVIDENZ_MIN_H vor Sensorende; früher, wenn eine Spanne der letzten EVIDENZ_MAX_H früher beginnt."""
     frueheste = ende - timedelta(hours=EVIDENZ_MAX_H)

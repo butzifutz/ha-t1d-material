@@ -64,6 +64,7 @@ from .model import (
     InsulinConfig,
     Modell,
     TypConfig,
+    evidenz_bereit,
     groesste_luecke_min,
     insulin_summe,
     iso,
@@ -300,12 +301,11 @@ class Verwaltung:
     async def _evidenz_sammeln(self, jetzt: datetime, tz) -> None:
         for c in self.modell.offene_evidenz():
             start, ende = parse(c["start"]), parse(c["ende"])
+            letzter = self._cgm[-1][0] if self._cgm else None  # aus dem TIR-Abruf direkt davor
+            if not evidenz_bereit(ende, letzter, jetzt, EVIDENZ_AUFGEBEN):
+                continue  # noch kein Glooko-Wert nach dem Wechsel – nächster Abruf
             serien = await self._glooko.serien(start, ende + timedelta(minutes=5), CGM_SERIEN)
             werte = cgm_werte(serien, tz)
-            letzte = werte[-1][0] if werte else None
-            vollstaendig = letzte is not None and letzte >= ende - timedelta(minutes=15)
-            if not vollstaendig and jetzt - ende < EVIDENZ_AUFGEBEN:
-                continue  # Glooko hat die Daten bis zum Ende noch nicht – nächster Abruf
             await self.evidenz_speichern(c, werte)
 
     async def evidenz_speichern(self, c: dict, werte: list[tuple[datetime, int]]) -> None:
